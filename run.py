@@ -22,6 +22,28 @@ def _log(message: str) -> None:
     print(f"[replicate-avatar] {message}", flush=True)
 
 
+def _runtime_log_tail(max_chars: int = 12000) -> str:
+    log_dir = RUNTIME_ROOT / "logs" / "torchrun"
+    if not log_dir.exists():
+        return ""
+    files = [path for path in log_dir.rglob("*") if path.is_file()]
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    chunks: list[str] = []
+    remaining = max_chars
+    for path in files[:8]:
+        if remaining <= 0:
+            break
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        tail = raw[-min(len(raw), max(1000, remaining // 2)) :]
+        chunk = f"\n--- {path.relative_to(RUNTIME_ROOT)} ---\n{tail}"
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return "".join(chunks)[-max_chars:]
+
+
 def _file_uri(path: SysPath) -> str:
     return "file://" + urllib.parse.quote(str(path.resolve()))
 
@@ -62,6 +84,7 @@ def _gpu_runtime_values() -> dict[str, str]:
 def _set_default_env(asset_root: SysPath) -> None:
     gpu_values = _gpu_runtime_values()
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    os.environ.setdefault("WORKER_BOOT_LOG", "1")
     os.environ.setdefault("WORKER_API_KEY", "replicate-local")
     os.environ.setdefault("SMARTBLOG_MOCK_CLAIM_FILE", "/tmp/vlogme-replicate-avatar-unused-claim.json")
     os.environ.setdefault("SMARTBLOG_MOCK_STATE_DIR", str(ROOT / "tmp" / "mock-state"))
@@ -245,7 +268,17 @@ class Predictor(BasePredictor):
         from avalife.worker.model_client import ModelRuntimeClient
 
         client = ModelRuntimeClient()
-        asyncio.run(client.wait_ready(timeout_sec=float(os.environ.get("MODEL_RUNTIME_READY_TIMEOUT_SEC", "1200"))))
+        try:
+            asyncio.run(client.wait_ready(timeout_sec=float(os.environ.get("MODEL_RUNTIME_READY_TIMEOUT_SEC", "1200"))))
+        except Exception as exc:
+            process_state = "not-started"
+            if self.modeld is not None:
+                returncode = self.modeld.poll()
+                process_state = "running" if returncode is None else f"exited:{returncode}"
+            tail = _runtime_log_tail()
+            if tail:
+                _log(f"model runtime log tail:{tail}")
+            raise RuntimeError(f"model runtime failed to become ready; process={process_state}: {exc}") from exc
         self.runtime_ready = True
         _log(f"model runtime is ready in {time.monotonic() - started_at:.1f}s")
 
