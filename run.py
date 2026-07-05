@@ -202,18 +202,25 @@ class Predictor(BasePredictor):
         sys.path.insert(0, str(RUNTIME_ROOT))
         os.chdir(str(RUNTIME_ROOT))
 
-        asset_root = SysPath(os.environ.get("VLOGME_AVATAR_ASSET_ROOT", str(ROOT / "weights"))).resolve()
-        asset_root.mkdir(parents=True, exist_ok=True)
-        _set_default_env(asset_root)
+        self.asset_root = SysPath(os.environ.get("VLOGME_AVATAR_ASSET_ROOT", str(ROOT / "weights"))).resolve()
+        self.asset_root.mkdir(parents=True, exist_ok=True)
+        self.modeld: subprocess.Popen[bytes] | None = None
+        self.runtime_ready = False
+        _set_default_env(self.asset_root)
         _append_replicate_profile_overrides(
-            asset_root,
+            self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
         )
+
+    def _ensure_runtime_ready(self) -> None:
+        if self.runtime_ready:
+            return
 
         preseed_mode = os.environ.get("VLOGME_AVATAR_PRESEED_MODE", "verify-or-preseed").strip().lower() or "verify-or-preseed"
         if preseed_mode not in {"skip", "verify", "preseed", "verify-or-preseed"}:
             raise RuntimeError("VLOGME_AVATAR_PRESEED_MODE must be skip, verify, preseed, or verify-or-preseed")
         if preseed_mode != "skip":
+            print(f"Replicate avatar runtime preseed mode: {preseed_mode}", flush=True)
             subprocess.run(
                 ["bash", "scripts/preseed_b200_avatar_assets.sh", preseed_mode],
                 cwd=str(RUNTIME_ROOT),
@@ -221,6 +228,7 @@ class Predictor(BasePredictor):
                 check=True,
             )
 
+        print("Starting Replicate avatar model runtime", flush=True)
         self.modeld = subprocess.Popen(
             ["bash", "scripts/modeld.sh"],
             cwd=str(RUNTIME_ROOT),
@@ -231,6 +239,8 @@ class Predictor(BasePredictor):
 
         client = ModelRuntimeClient()
         asyncio.run(client.wait_ready(timeout_sec=float(os.environ.get("MODEL_RUNTIME_READY_TIMEOUT_SEC", "1200"))))
+        self.runtime_ready = True
+        print("Replicate avatar model runtime is ready", flush=True)
 
     def predict(
         self,
@@ -242,6 +252,7 @@ class Predictor(BasePredictor):
     async def _predict_async(self, *, avatar_image: Path, audio: Path) -> Path:
         os.chdir(str(RUNTIME_ROOT))
         sys.path.insert(0, str(RUNTIME_ROOT))
+        self._ensure_runtime_ready()
 
         size_profile = os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200"
         if size_profile not in {"b200", "b300"}:
