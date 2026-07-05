@@ -18,6 +18,10 @@ ROOT = SysPath(__file__).resolve().parent
 RUNTIME_ROOT = ROOT / "runtime" / "SmartBlog-Live"
 
 
+def _log(message: str) -> None:
+    print(f"[replicate-avatar] {message}", flush=True)
+
+
 def _file_uri(path: SysPath) -> str:
     return "file://" + urllib.parse.quote(str(path.resolve()))
 
@@ -220,15 +224,18 @@ class Predictor(BasePredictor):
         if preseed_mode not in {"skip", "verify", "preseed", "verify-or-preseed"}:
             raise RuntimeError("VLOGME_AVATAR_PRESEED_MODE must be skip, verify, preseed, or verify-or-preseed")
         if preseed_mode != "skip":
-            print(f"Replicate avatar runtime preseed mode: {preseed_mode}", flush=True)
+            started_at = time.monotonic()
+            _log(f"runtime preseed mode: {preseed_mode}")
             subprocess.run(
                 ["bash", "scripts/preseed_b200_avatar_assets.sh", preseed_mode],
                 cwd=str(RUNTIME_ROOT),
                 env=os.environ.copy(),
                 check=True,
             )
+            _log(f"runtime preseed finished in {time.monotonic() - started_at:.1f}s")
 
-        print("Starting Replicate avatar model runtime", flush=True)
+        started_at = time.monotonic()
+        _log("starting model runtime")
         self.modeld = subprocess.Popen(
             ["bash", "scripts/modeld.sh"],
             cwd=str(RUNTIME_ROOT),
@@ -240,7 +247,7 @@ class Predictor(BasePredictor):
         client = ModelRuntimeClient()
         asyncio.run(client.wait_ready(timeout_sec=float(os.environ.get("MODEL_RUNTIME_READY_TIMEOUT_SEC", "1200"))))
         self.runtime_ready = True
-        print("Replicate avatar model runtime is ready", flush=True)
+        _log(f"model runtime is ready in {time.monotonic() - started_at:.1f}s")
 
     def predict(
         self,
@@ -251,16 +258,20 @@ class Predictor(BasePredictor):
             default=None,
         ),
     ) -> Path:
+        _log("predict request accepted")
         if hf_token is not None:
             token = (hf_token.get_secret_value() or "").strip()
             if token:
                 os.environ["HF_TOKEN"] = token
                 os.environ["HUGGING_FACE_HUB_TOKEN"] = token
                 os.environ["SMARTBLOG_HF_TOKEN"] = token
+                _log("HF token provided")
         self._ensure_runtime_ready()
         return asyncio.run(self._predict_async(avatar_image=avatar_image, audio=audio))
 
     async def _predict_async(self, *, avatar_image: Path, audio: Path) -> Path:
+        prediction_started_at = time.monotonic()
+        _log("starting avatar render")
         os.chdir(str(RUNTIME_ROOT))
         sys.path.insert(0, str(RUNTIME_ROOT))
 
@@ -348,7 +359,9 @@ class Predictor(BasePredictor):
             state_dir=str(run_root / "mock-state"),
         )
         try:
+            render_started_at = time.monotonic()
             plan = await worker._smartblog_render_video_job(claim)
+            _log(f"avatar render job finished in {time.monotonic() - render_started_at:.1f}s")
         finally:
             await worker.aclose()
 
@@ -358,4 +371,5 @@ class Predictor(BasePredictor):
 
         final_path = run_root / "avatar.mp4"
         shutil.copyfile(str(output_path), str(final_path))
+        _log(f"prediction finished in {time.monotonic() - prediction_started_at:.1f}s")
         return Path(str(final_path))
