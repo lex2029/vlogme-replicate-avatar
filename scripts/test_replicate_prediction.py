@@ -18,7 +18,11 @@ API_ROOT = "https://api.replicate.com/v1"
 
 def _request(method: str, url: str, *, token: str, body: dict | None = None) -> dict:
     data = None
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "User-Agent": "vlogme-replicate-avatar-smoke-test/1.0",
+    }
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
