@@ -85,6 +85,7 @@ def _tail_logs(prediction: dict, max_chars: int = 4000) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a smoke prediction on the Replicate avatar model.")
     parser.add_argument("--model", default="lex2029/vlogme-avatar")
+    parser.add_argument("--deployment", default="")
     parser.add_argument("--image", default="runtime/SmartBlog-Live/assets/ref_user_photo.jpg")
     parser.add_argument("--timeout-sec", type=int, default=5400)
     parser.add_argument("--poll-sec", type=int, default=30)
@@ -101,20 +102,25 @@ def main() -> int:
         raise RuntimeError(f"Missing smoke image: {image_path}")
     _make_smoke_audio(audio_path)
 
-    print(f"Resolving latest version for {args.model}")
-    version_id = _latest_version_id(args.model, token=token)
-    print(f"Using version {version_id[:12]}...")
-
     payload = {
-        "version": version_id,
         "input": {
             "avatar_image": _data_uri(image_path, "image/jpeg"),
             "audio": _data_uri(audio_path, "audio/wav"),
         },
     }
+    if args.deployment:
+        create_url = f"{API_ROOT}/deployments/{args.deployment}/predictions"
+        print(f"Using deployment {args.deployment}")
+    else:
+        print(f"Resolving latest version for {args.model}")
+        version_id = _latest_version_id(args.model, token=token)
+        print(f"Using version {version_id[:12]}...")
+        payload["version"] = version_id
+        create_url = f"{API_ROOT}/predictions"
+
     prediction = _request(
         "POST",
-        f"{API_ROOT}/predictions",
+        create_url,
         token=token,
         body=payload,
     )
