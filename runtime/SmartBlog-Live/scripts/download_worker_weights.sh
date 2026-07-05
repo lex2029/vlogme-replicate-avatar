@@ -87,6 +87,36 @@ download_tree() {
   [[ -f "$ASSET_ROOT/$required_rel" ]] || fail "$label download finished but required file missing: $required_rel"
 }
 
+download_tree_if_missing_any() {
+  local label="$1"
+  local repo_id="$2"
+  local include_glob="$3"
+  local remote_root="$4"
+  local local_root="$5"
+  local revision="$6"
+  shift 6
+
+  local rel
+  if [[ "$FORCE_DOWNLOAD" != "1" ]]; then
+    local missing=0
+    for rel in "$@"; do
+      if [[ ! -s "$ASSET_ROOT/$rel" ]]; then
+        missing=1
+        break
+      fi
+    done
+    if [[ "$missing" == "0" ]]; then
+      log "skip $label; required files already present"
+      return 0
+    fi
+  fi
+
+  FORCE_DOWNLOAD=1 download_tree "$label" "$repo_id" "$include_glob" "$remote_root" "$local_root" "$1" "$revision"
+  for rel in "$@"; do
+    [[ -s "$ASSET_ROOT/$rel" ]] || fail "$label download finished but required file missing: $rel"
+  done
+}
+
 download_enhancers() {
   local repo_id="$1"
   local include_glob="$2"
@@ -155,14 +185,16 @@ main() {
   local enhancer_repo="${HF_ENHANCER_MODELS_REPO_ID:-$worker_repo}"
   local face_repo="${HF_FACE_WEIGHTS_REPO_ID:-$worker_repo}"
 
-  download_tree \
+  download_tree_if_missing_any \
     "base model" \
     "$base_repo" \
     "${HF_BASE_MODEL_INCLUDE:-Wan2.2-S2V-14B/*}" \
     "Wan2.2-S2V-14B" \
     "ckpt/Wan2.2-S2V-14B" \
+    "${HF_BASE_MODEL_REVISION:-}" \
     "ckpt/Wan2.2-S2V-14B/config.json" \
-    "${HF_BASE_MODEL_REVISION:-}"
+    "ckpt/Wan2.2-S2V-14B/models_t5_umt5-xxl-enc-bf16.pth" \
+    "ckpt/Wan2.2-S2V-14B/Wan2.1_VAE.pth"
 
   download_tree \
     "merged model" \
