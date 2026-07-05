@@ -15,6 +15,10 @@ speech audio file and return a generated avatar MP4.
 - On first start, `VLOGME_AVATAR_PRESEED_MODE` defaults to `verify-or-preseed`,
   so a fresh container will verify local weights and then try to download missing
   assets.
+- The default runtime profile targets Replicate `gpu-a100-large-2x`:
+  `VLOGME_AVATAR_GPU_LAYOUT=dit2`, using two A100 80GB cards for distributed DiT.
+  Set `VLOGME_AVATAR_GPU_LAYOUT=split_vae` to put DiT on one GPU and VAE/decode
+  on the second, or `single` for one-GPU debugging.
 - Secrets are not needed for the first audio-driven avatar test.
 
 ## First Local Test

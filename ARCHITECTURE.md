@@ -39,6 +39,7 @@ visual prompt automatically inside the model wrapper.
 Advanced runtime choices stay environment-driven for now:
 
 - `VLOGME_AVATAR_SIZE_PROFILE=b200|b300`
+- `VLOGME_AVATAR_GPU_LAYOUT=dit2|split_vae|single`
 - `VLOGME_AVATAR_SAMPLE_STEPS`
 - `VLOGME_AVATAR_SEED`
 - `VLOGME_AVATAR_FACE_RESTORE`

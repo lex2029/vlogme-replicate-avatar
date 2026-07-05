@@ -28,7 +28,35 @@ def _copy_input(src: Path, dst: SysPath) -> SysPath:
     return dst
 
 
+def _gpu_runtime_values() -> dict[str, str]:
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
+    if layout in {"single", "1", "one"}:
+        return {
+            "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0"),
+            "TORCHRUN_NPROC": "1",
+            "NUM_GPUS_DIT": "1",
+            "ULYSSES_SIZE": os.environ.get("VLOGME_AVATAR_ULYSSES_SIZE", "1"),
+            "ENABLE_VAE_PARALLEL": "0",
+        }
+    if layout in {"split", "split_vae", "dit1_vae1", "vae"}:
+        return {
+            "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0,1"),
+            "TORCHRUN_NPROC": "2",
+            "NUM_GPUS_DIT": "1",
+            "ULYSSES_SIZE": os.environ.get("VLOGME_AVATAR_ULYSSES_SIZE", "1"),
+            "ENABLE_VAE_PARALLEL": "1",
+        }
+    return {
+        "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0,1"),
+        "TORCHRUN_NPROC": "2",
+        "NUM_GPUS_DIT": "2",
+        "ULYSSES_SIZE": os.environ.get("VLOGME_AVATAR_ULYSSES_SIZE", "1"),
+        "ENABLE_VAE_PARALLEL": "0",
+    }
+
+
 def _set_default_env(asset_root: SysPath) -> None:
+    gpu_values = _gpu_runtime_values()
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     os.environ.setdefault("WORKER_API_KEY", "replicate-local")
     os.environ.setdefault("SMARTBLOG_MOCK_CLAIM_FILE", "/tmp/vlogme-replicate-avatar-unused-claim.json")
@@ -44,10 +72,11 @@ def _set_default_env(asset_root: SysPath) -> None:
         asset_root / "ckpt" / "Wan2.2-S2V-14B-merged-liveavatar-prefp8-test"
     )
 
-    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-    os.environ.setdefault("TORCHRUN_NPROC", "1")
-    os.environ.setdefault("NUM_GPUS_DIT", "1")
-    os.environ.setdefault("ULYSSES_SIZE", "1")
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_values["CUDA_VISIBLE_DEVICES"])
+    os.environ.setdefault("TORCHRUN_NPROC", gpu_values["TORCHRUN_NPROC"])
+    os.environ.setdefault("NUM_GPUS_DIT", gpu_values["NUM_GPUS_DIT"])
+    os.environ.setdefault("ULYSSES_SIZE", gpu_values["ULYSSES_SIZE"])
+    os.environ.setdefault("ENABLE_VAE_PARALLEL", gpu_values["ENABLE_VAE_PARALLEL"])
     os.environ.setdefault("MASTER_PORT", "29541")
     os.environ.setdefault("WORKER_TASK", "s2v-14B")
     os.environ.setdefault("WORKER_FPS", "16")
@@ -91,6 +120,7 @@ def _default_negative_prompt() -> str:
 
 
 def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: str = "b200") -> None:
+    gpu_values = _gpu_runtime_values()
     profile_path = RUNTIME_ROOT / "config" / "worker_profile.local.conf"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     base_profile = "b300-avatar-commander" if size_profile == "b300" else "b200-avatar-commander"
@@ -109,6 +139,11 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
     profile_values = {
         "WORKER_PROFILE_NAME": "replicate-avatar",
         "WORKER_ASSET_ROOT": str(asset_root),
+        "CUDA_VISIBLE_DEVICES": gpu_values["CUDA_VISIBLE_DEVICES"],
+        "TORCHRUN_NPROC": gpu_values["TORCHRUN_NPROC"],
+        "NUM_GPUS_DIT": gpu_values["NUM_GPUS_DIT"],
+        "ULYSSES_SIZE": gpu_values["ULYSSES_SIZE"],
+        "ENABLE_VAE_PARALLEL": gpu_values["ENABLE_VAE_PARALLEL"],
         "HF_HOME": str(asset_root / "hf"),
         "CKPT_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B"),
         "LORA_PATH_DMD": str(asset_root / "ckpt" / "LiveAvatar" / "liveavatar.safetensors"),
