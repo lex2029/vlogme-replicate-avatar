@@ -23,7 +23,7 @@ The current runtime already has a useful avatar-only path:
   final MP4 files.
 - `_smartblog_render_video_job()` returns a `SmartBlogRenderFinalizePlan`.
 
-The Cog wrapper uses that render path directly and stops before upload/finalize.
+The Cog predictor uses that render path directly and stops before upload/finalize.
 
 ## First Version
 
