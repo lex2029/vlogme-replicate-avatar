@@ -20,4 +20,4 @@ build:
     - "libxrender1"
     - "netcat-openbsd"
     - "python3-dev"
-predict: "run.py:Predictor"
+run: "run.py:Runner"
