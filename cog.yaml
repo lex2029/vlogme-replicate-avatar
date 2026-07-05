@@ -1,0 +1,25 @@
+build:
+  gpu: true
+  python_version: "3.12"
+  python_requirements: requirements.txt
+  system_packages:
+    - "ca-certificates"
+    - "curl"
+    - "ffmpeg"
+    - "fonts-noto-cjk"
+    - "fonts-noto-color-emoji"
+    - "fonts-noto-core"
+    - "git"
+    - "git-lfs"
+    - "libgl1"
+    - "libglib2.0-0"
+    - "libsm6"
+    - "libsndfile1"
+    - "libxext6"
+    - "libxrender1"
+    - "netcat-openbsd"
+    - "python3-dev"
+concurrency:
+  max: 1
+run: "run.py:Runner"
+

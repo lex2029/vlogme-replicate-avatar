@@ -1,0 +1,9 @@
+# Cog will pick a compatible CUDA/cuDNN stack when `build.gpu: true` is enabled.
+# These pins are the first test baseline; adjust after the first Replicate build
+# if the target hardware requires a newer Blackwell-specific torch wheel.
+torch==2.7.1
+torchvision==0.22.1
+torchaudio==2.7.1
+
+-r runtime/SmartBlog-Live/requirements-b200-avatar.txt
+

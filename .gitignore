@@ -1,0 +1,27 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.python-version
+.venv/
+.tools/
+
+# Local/runtime artifacts
+logs/
+output/
+tmp/
+runtime/SmartBlog-Live/logs/
+runtime/SmartBlog-Live/output/
+runtime/SmartBlog-Live/runtime/
+runtime/SmartBlog-Live/tmp/
+runtime/SmartBlog-Live/.venv/
+
+# Never commit secrets or model weights.
+.env
+.env.*
+config/worker_secrets.conf
+runtime/SmartBlog-Live/config/worker_secrets.conf
+weights/
+*.safetensors
+*.ckpt
+*.pth
+*.pt
