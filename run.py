@@ -92,6 +92,17 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("SERVER_NAME", "127.0.0.1")
     os.environ.setdefault("WORKER_LIVEAUDIO_MICRO_CHUNK_SCHEDULE_SAMPLES", "64000")
     os.environ.setdefault("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_ASYNC_PRODUCER", "1")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP", "1")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_REFILL_DURING_DENOISE", "0")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_MAX_PENDING_CLIPS", "24")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_MAX_TOTAL_CLIPS", "0")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_REPLY_START_MIN_CLIPS", "1")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_REPLY_MODEL_QUEUE_TARGET", "1")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_TAIL_FILL_MODE", "zero")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_FILL_NOISE_STD", "0.0003")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_FILL_NOISE_SEED", "420")
+    os.environ.setdefault("LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH", "1")
 
     # Replicate should return a local MP4. No VlogMe upload, no remote RTX edge.
     os.environ["REMOTE_EDGE_ENABLED"] = "0"
@@ -157,6 +168,21 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_RENDER_FINALIZE_BACKGROUND": "0",
         "SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND": "0",
         "SMARTBLOG_RENDER_BURN_IN_SUBTITLES": "0",
+        "LIVE_AUDIO_STREAM_ASYNC_PRODUCER": os.environ.get("LIVE_AUDIO_STREAM_ASYNC_PRODUCER", "1"),
+        "LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP": os.environ.get(
+            "LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP", "1"
+        ),
+        "LIVE_AUDIO_STREAM_REFILL_DURING_DENOISE": os.environ.get("LIVE_AUDIO_STREAM_REFILL_DURING_DENOISE", "0"),
+        "LIVE_AUDIO_STREAM_MAX_PENDING_CLIPS": os.environ.get("LIVE_AUDIO_STREAM_MAX_PENDING_CLIPS", "24"),
+        "LIVE_AUDIO_STREAM_MAX_TOTAL_CLIPS": os.environ.get("LIVE_AUDIO_STREAM_MAX_TOTAL_CLIPS", "0"),
+        "LIVE_AUDIO_STREAM_REPLY_START_MIN_CLIPS": os.environ.get("LIVE_AUDIO_STREAM_REPLY_START_MIN_CLIPS", "1"),
+        "LIVE_AUDIO_STREAM_REPLY_MODEL_QUEUE_TARGET": os.environ.get(
+            "LIVE_AUDIO_STREAM_REPLY_MODEL_QUEUE_TARGET", "1"
+        ),
+        "LIVE_AUDIO_STREAM_TAIL_FILL_MODE": os.environ.get("LIVE_AUDIO_STREAM_TAIL_FILL_MODE", "zero"),
+        "LIVE_AUDIO_STREAM_FILL_NOISE_STD": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_STD", "0.0003"),
+        "LIVE_AUDIO_STREAM_FILL_NOISE_SEED": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_SEED", "420"),
+        "LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH": os.environ.get("LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH", "1"),
         "USE_FP8": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "LIVEAVATAR_FP8_QUANT_COMPILE": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "ENABLE_COMPILE": os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"),
