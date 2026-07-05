@@ -16,6 +16,7 @@ tokenizers==0.21.4
 accelerate==1.13.0
 peft==0.17.1
 tqdm==4.67.3
+einops==0.8.1
 imageio[ffmpeg]==2.37.3
 easydict==1.13
 ftfy==6.3.1
