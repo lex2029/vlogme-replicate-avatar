@@ -1,0 +1,30 @@
+name: Test Replicate Prediction
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Replicate model name, for example "lex2029/vlogme-avatar"'
+        required: true
+        default: "lex2029/vlogme-avatar"
+      timeout_sec:
+        description: "Maximum time to wait for the prediction"
+        required: true
+        default: "5400"
+
+jobs:
+  test_prediction:
+    name: Test Replicate Prediction
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run smoke prediction
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          python3 scripts/test_replicate_prediction.py \
+            --model "${{ inputs.model_name }}" \
+            --timeout-sec "${{ inputs.timeout_sec }}"
