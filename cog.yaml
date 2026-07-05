@@ -19,7 +19,4 @@ build:
     - "libxrender1"
     - "netcat-openbsd"
     - "python3-dev"
-concurrency:
-  max: 1
 run: "run.py:Runner"
-
