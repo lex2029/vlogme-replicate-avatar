@@ -11,7 +11,7 @@ from argparse import Namespace
 from pathlib import Path as SysPath
 from typing import Any
 
-from cog import BasePredictor, Input, Path
+from cog import BasePredictor, Input, Path, Secret
 
 
 ROOT = SysPath(__file__).resolve().parent
@@ -246,12 +246,22 @@ class Predictor(BasePredictor):
         self,
         avatar_image: Path = Input(description="Face/avatar reference image"),
         audio: Path = Input(description="Speech audio to animate"),
+        hf_token: Secret | None = Input(
+            description="Optional Hugging Face token for private model weights",
+            default=None,
+        ),
     ) -> Path:
-        return asyncio.run(self._predict_async(avatar_image=avatar_image, audio=audio))
+        return asyncio.run(self._predict_async(avatar_image=avatar_image, audio=audio, hf_token=hf_token))
 
-    async def _predict_async(self, *, avatar_image: Path, audio: Path) -> Path:
+    async def _predict_async(self, *, avatar_image: Path, audio: Path, hf_token: Secret | None = None) -> Path:
         os.chdir(str(RUNTIME_ROOT))
         sys.path.insert(0, str(RUNTIME_ROOT))
+        if hf_token is not None:
+            token = (hf_token.get_secret_value() or "").strip()
+            if token:
+                os.environ["HF_TOKEN"] = token
+                os.environ["HUGGING_FACE_HUB_TOKEN"] = token
+                os.environ["SMARTBLOG_HF_TOKEN"] = token
         self._ensure_runtime_ready()
 
         size_profile = os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200"

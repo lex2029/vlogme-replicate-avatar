@@ -108,6 +108,9 @@ def main() -> int:
             "audio": _data_uri(audio_path, "audio/wav"),
         },
     }
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        payload["input"]["hf_token"] = hf_token
     if args.deployment:
         create_url = f"{API_ROOT}/deployments/{args.deployment}/predictions"
         print(f"Using deployment {args.deployment}")
