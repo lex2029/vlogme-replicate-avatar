@@ -54,7 +54,7 @@ rolling updates are controlled outside the VlogMe app.
 ## Runtime Notes
 
 The wrapper starts the LiveAvatar model runtime once in `setup()` and keeps it
-warm for subsequent `run()` calls. `run()` routes through the existing
+warm for subsequent `predict()` calls. `predict()` routes through the existing
 avatar-only render path but bypasses VlogMe job polling and Supabase upload.
 
 The output is returned to Replicate as a local file. VlogMe should upload/store

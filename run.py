@@ -11,7 +11,7 @@ from argparse import Namespace
 from pathlib import Path as SysPath
 from typing import Any
 
-from cog import BaseRunner, Input, Path
+from cog import BasePredictor, Input, Path
 
 
 ROOT = SysPath(__file__).resolve().parent
@@ -169,7 +169,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             f.write(f"{key}={value}\n")
 
 
-class Runner(BaseRunner):
+class Predictor(BasePredictor):
     def setup(self) -> None:
         if not RUNTIME_ROOT.exists():
             raise RuntimeError(f"Missing runtime snapshot: {RUNTIME_ROOT}")
@@ -206,7 +206,7 @@ class Runner(BaseRunner):
         client = ModelRuntimeClient()
         asyncio.run(client.wait_ready(timeout_sec=float(os.environ.get("MODEL_RUNTIME_READY_TIMEOUT_SEC", "1200"))))
 
-    def run(
+    def predict(
         self,
         avatar_image: Path = Input(description="Face/avatar reference image"),
         audio: Path = Input(description="Speech audio to animate"),
