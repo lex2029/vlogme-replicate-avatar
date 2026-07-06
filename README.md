@@ -16,15 +16,15 @@ speech audio file and return a generated avatar MP4.
   so a fresh container will verify local weights and then try to download missing
   assets.
 - The default runtime profile targets Replicate `gpu-a100-large-2x`:
-  `VLOGME_AVATAR_GPU_LAYOUT=split`. Split runs DiT/denoise on GPU 0 and keeps
-  GPU 1 dedicated to VAE/decode/stream-file/post-VAE work. `auto` currently
-  resolves to the same split layout because the Replicate path is expected to
-  add GPU1 post-VAE stages. Use `VLOGME_AVATAR_GPU_LAYOUT=dit2` only for explicit
-  A/B tests where both A100 cards should shard DiT/denoise. The default
-  first-pass Replicate canvas is portrait `704*384` (Wan/model order is
-  height*width), with 32-frame inference windows, 6 inference steps, and face
-  restore disabled. The public `predict()` input also accepts `sample_steps`;
-  use `4` for smoke tests and `6+` for quality checks. Tune
+  `VLOGME_AVATAR_GPU_LAYOUT=passthrough`. Passthrough runs DiT/denoise on GPU 0
+  and keeps GPU 1 dedicated to VAE/decode/stream-file/post-VAE work. It uses
+  32-frame inference windows, 4 latent frames per Wan block, and a 32-frame KV
+  cache so the denoise side keeps one full output window of history. Use
+  `VLOGME_AVATAR_GPU_LAYOUT=dit2` only for explicit A/B tests where both A100
+  cards should shard DiT/denoise. The default first-pass Replicate canvas is
+  portrait `704*384` (Wan/model order is height*width), with 6 inference steps
+  and face restore disabled. The public `predict()` input also accepts
+  `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
   `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable.
 - A100 acceleration defaults are conservative: BF16/TF32 enabled, merged

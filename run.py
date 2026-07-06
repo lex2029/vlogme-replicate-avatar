@@ -63,12 +63,12 @@ def _env_int(name: str, default: int = 0) -> int:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "passthrough").strip().lower() or "passthrough"
     if layout in {"auto", "a100", "a100_auto"}:
-        layout = "dit2"
+        layout = "passthrough"
     if layout in {"passthrough", "pass_through", "split_passthrough", "split_lowmem"}:
         layout = "passthrough"
-        os.environ.setdefault("VLOGME_AVATAR_KV_CACHE_FRAMES", "16")
+        os.environ.setdefault("VLOGME_AVATAR_KV_CACHE_FRAMES", "32")
         os.environ.setdefault("VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK", "4")
         os.environ.setdefault("VLOGME_AVATAR_OFFLOAD_MODEL", "true")
     os.environ["VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE"] = str(layout)
@@ -577,7 +577,7 @@ class Predictor(BasePredictor):
             default=0,
         ),
         gpu_layout: str = Input(
-            description="Optional cold-start GPU layout override: split, dit2, or single.",
+            description="Optional cold-start GPU layout override: passthrough, split, dit2, or single.",
             default="",
         ),
         use_fp8: int = Input(
