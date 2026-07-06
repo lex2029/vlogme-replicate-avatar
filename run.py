@@ -173,7 +173,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         size = "832*448"
         live_profile = "highres_2x"
     else:
-        size = os.environ.get("VLOGME_AVATAR_SIZE", "640*360").strip() or "640*360"
+        size = os.environ.get("VLOGME_AVATAR_SIZE", "384*256").strip() or "384*256"
         live_profile = "highres_1_5x"
     profile_values = {
         "WORKER_PROFILE_NAME": "replicate-avatar",
