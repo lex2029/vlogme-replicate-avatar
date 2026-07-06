@@ -3887,6 +3887,9 @@ class WanS2V:
             stream_file_nvvfx_quality = str(
                 os.getenv("SMARTBLOG_STREAM_FILE_NVVFX_EFFECT_FALLBACK_QUALITY", "HIGH") or "HIGH"
             ).strip().upper()
+        stream_file_post_vae_output_size = bool(
+            _stream_file_env_flag("SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE", "1")
+        )
         stream_file_enabled = bool(stream_file_path) and int(rank) == int(decode_rank)
         stream_file_queue: deque[dict[str, Any]] = deque()
         stream_file_cv = threading.Condition()
@@ -7272,7 +7275,10 @@ class WanS2V:
                                 post_vae_output_w = int(WIDTH)
                                 if (
                                     need_stream_file_frames
-                                    and not bool(stream_file_nvvfx_enabled)
+                                    and (
+                                        bool(stream_file_post_vae_output_size)
+                                        or not bool(stream_file_nvvfx_enabled)
+                                    )
                                     and int(stream_file_output_h or 0) > 0
                                     and int(stream_file_output_w or 0) > 0
                                 ):

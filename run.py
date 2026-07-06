@@ -221,14 +221,15 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
     os.environ.setdefault("LIVE_RAW_POST_VAE_UPSCALE_X2", "1")
-    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "1")
     os.environ.setdefault("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384")
-    os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.0")
+    os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.75")
     os.environ.setdefault("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "torch-rife")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX_FAIL_OPEN", "1")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE", "1")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1"))
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX_QUALITY", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"))
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX_FAIL_OPEN", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_FAIL_OPEN", "1"))
@@ -378,8 +379,11 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512"
         ),
         "LIVE_RAW_POST_VAE_UPSCALE_X2": os.environ.get("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"),
-        "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"),
+        "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "1"),
         "SMARTBLOG_MEDIA_TRT_MAX_DIM": os.environ.get("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384"),
+        "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE", "1"
+        ),
         "REMOTE_EDGE_TORCH_RIFE_MODEL_DIR": os.environ.get(
             "REMOTE_EDGE_TORCH_RIFE_MODEL_DIR", str(asset_root / "RIFE-safetensors")
         ),

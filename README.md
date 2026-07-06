@@ -23,7 +23,9 @@ speech audio file and return a generated avatar MP4.
   `VLOGME_AVATAR_GPU_LAYOUT=dit2` only for explicit A/B tests where both A100
   cards should shard DiT/denoise. The default first-pass Replicate canvas is
   portrait `704*384` (Wan/model order is height*width), with 6 inference steps
-  and face restore disabled. The public `predict()` input also accepts
+  and PostVAE/GFPGAN face restore enabled. File rendering keeps PostVAE at the
+  final MP4 size so the face-restored output is not downscaled before encoding.
+  The public `predict()` input also accepts
   `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
   `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable.
