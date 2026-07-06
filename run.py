@@ -221,6 +221,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_REFRESH_CLIPS", "12")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
@@ -383,6 +384,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             "LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075"
         ),
         "LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA": os.environ.get("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_MODE": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED": os.environ.get(
             "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1"
         ),

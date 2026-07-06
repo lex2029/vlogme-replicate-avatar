@@ -240,9 +240,9 @@ class PostVAEEnhancer:
             )
         except Exception:
             self._face_mask_softness = 0.14
-        self._face_mask_mode = str(
-            os.getenv("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "square_soft") or "square_soft"
-        ).strip().lower()
+        self._face_mask_mode = self._normalize_face_mask_mode(
+            os.getenv("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square") or "inner_square"
+        )
         self._face_mask_radius_x = max(0.12, min(0.49, float(self._face_mask_radius_x)))
         self._face_mask_radius_y = max(0.12, min(0.60, float(self._face_mask_radius_y)))
         self._face_mask_center_y = max(0.35, min(0.70, float(self._face_mask_center_y)))
@@ -488,12 +488,23 @@ class PostVAEEnhancer:
     @staticmethod
     def _inner_square_face_mask(*, height: int, width: int, device: torch.device) -> torch.Tensor:
         mask = torch.zeros((1, 3, int(height), int(width)), dtype=torch.float32, device=device)
-        # Legacy enchenh2d GPU paste mask. Keep for explicit A/B testing only:
-        # the inner 64px crop margin can become visible on some low-res frames.
+        # GFPGAN/facexlib paste compatibility: restore the aligned square crop,
+        # but paste only the stable inner face area and feather it back.
         margin_y = max(1, min(int(height) // 2 - 1, int(round(float(height) * (64.0 / 512.0)))))
         margin_x = max(1, min(int(width) // 2 - 1, int(round(float(width) * (64.0 / 512.0)))))
         mask[:, :, int(margin_y) : int(height) - int(margin_y), int(margin_x) : int(width) - int(margin_x)] = 1.0
         return mask.contiguous()
+
+    @staticmethod
+    def _normalize_face_mask_mode(mode: object) -> str:
+        raw = str(mode or "inner_square").strip().lower().replace("-", "_")
+        if raw in {"gfpgan", "gfpgan_square", "gfpgan_inner", "square_inner", "inner_square", "legacy_square"}:
+            return "inner_square"
+        if raw in {"ellipse", "oval"}:
+            return "ellipse"
+        if raw in {"full_square", "square_full", "square_soft", "full"}:
+            return "square_soft"
+        return "inner_square"
 
     @staticmethod
     def _erode_mask(mask: torch.Tensor, kernel_size: int) -> torch.Tensor:
@@ -732,11 +743,11 @@ class PostVAEEnhancer:
             return []
         face_h = int(getattr(face_enhancer, "_face_size")[1])
         face_w = int(getattr(face_enhancer, "_face_size")[0])
-        mode = str(mask_mode or getattr(self, "_face_mask_mode", "square_soft") or "square_soft").strip().lower()
+        mode = self._normalize_face_mask_mode(mask_mode or getattr(self, "_face_mask_mode", "inner_square"))
         self._last_debug_info["face_mask_mode"] = str(mode)
         if mode in {"ellipse", "oval"}:
             inner = self._aligned_face_mask(height=int(face_h), width=int(face_w), device=tensor_01.device)
-        elif mode in {"inner_square", "legacy_square"}:
+        elif mode == "inner_square":
             inner = self._inner_square_face_mask(height=int(face_h), width=int(face_w), device=tensor_01.device)
         else:
             inner = self._full_square_face_mask(height=int(face_h), width=int(face_w), device=tensor_01.device)
@@ -763,7 +774,7 @@ class PostVAEEnhancer:
                 mode="bilinear",
                 padding_mode="zeros",
             )
-            if mode in {"ellipse", "oval", "inner_square", "legacy_square"}:
+            if mode in {"ellipse", "inner_square"}:
                 mask = kornia.filters.gaussian_blur2d(mask, (51, 51), (17.0, 17.0)).contiguous()
             else:
                 mask = self._soften_square_face_mask(mask)
@@ -1117,7 +1128,7 @@ class PostVAEEnhancer:
                 output_height=int(height),
                 output_width=int(width),
                 affine_scale=1.0,
-                mask_mode=str(getattr(self, "_face_mask_mode", "square_soft") or "square_soft"),
+                mask_mode=str(getattr(self, "_face_mask_mode", "inner_square") or "inner_square"),
                 layout_mode=str(getattr(self, "_face_aligned_layout_mode", "frame_loop") or "frame_loop"),
             )
             layout_sec = _phase_dt(layout_t0, device=self.device)
@@ -1455,10 +1466,10 @@ class PostVAEEnhancer:
                     mode="bilinear",
                     padding_mode="zeros",
                 )
-                mode = str(getattr(self, "_face_mask_mode", "square_soft") or "square_soft").strip().lower()
+                mode = self._normalize_face_mask_mode(getattr(self, "_face_mask_mode", "inner_square"))
                 if mode in {"ellipse", "oval"}:
                     inner = self._aligned_face_mask(height=int(face_h), width=int(face_w), device=self.device)
-                elif mode in {"inner_square", "legacy_square"}:
+                elif mode == "inner_square":
                     inner = self._inner_square_face_mask(height=int(face_h), width=int(face_w), device=self.device)
                 else:
                     inner = self._full_square_face_mask(height=int(face_h), width=int(face_w), device=self.device)
@@ -1469,7 +1480,7 @@ class PostVAEEnhancer:
                     mode="bilinear",
                     padding_mode="zeros",
                 )
-                if mode in {"ellipse", "oval", "inner_square", "legacy_square"}:
+                if mode in {"ellipse", "inner_square"}:
                     _ = kornia.filters.gaussian_blur2d(mask, (51, 51), (17.0, 17.0))
                 else:
                     _ = self._soften_square_face_mask(mask)
@@ -1728,7 +1739,7 @@ class PostVAEEnhancer:
                     output_height=int(layer_h),
                     output_width=int(layer_w),
                     affine_scale=float(face_affine_scale),
-                    mask_mode=str(getattr(self, "_face_mask_mode", "ellipse") or "ellipse"),
+                    mask_mode=str(getattr(self, "_face_mask_mode", "inner_square") or "inner_square"),
                     layout_mode=str(getattr(self, "_face_aligned_layout_mode", "frame_loop") or "frame_loop"),
                 )
                 phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
