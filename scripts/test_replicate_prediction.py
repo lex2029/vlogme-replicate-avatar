@@ -121,6 +121,11 @@ def main() -> int:
     parser.add_argument("--motion-file", type=int, default=-1)
     parser.add_argument("--motion-mode", default="")
     parser.add_argument("--audio-seconds", type=float, default=2.0)
+    parser.add_argument("--face-restore", type=float, default=-1.0)
+    parser.add_argument("--stream-file-interpolation", default="")
+    parser.add_argument("--output-fps", type=float, default=0.0)
+    parser.add_argument("--stream-file-nvvfx", type=int, default=-1)
+    parser.add_argument("--nvvfx-quality", default="")
     parser.add_argument("--log-tail-chars", type=int, default=20000)
     parser.add_argument("--live-log-chars", type=int, default=6000)
     args = parser.parse_args()
@@ -166,6 +171,16 @@ def main() -> int:
         payload["input"]["motion_file"] = int(args.motion_file)
     if str(args.motion_mode or "").strip():
         payload["input"]["motion_mode"] = str(args.motion_mode or "").strip()
+    if float(args.face_restore) >= 0.0:
+        payload["input"]["face_restore"] = float(args.face_restore)
+    if str(args.stream_file_interpolation or "").strip():
+        payload["input"]["stream_file_interpolation"] = str(args.stream_file_interpolation or "").strip()
+    if float(args.output_fps or 0.0) > 0.0:
+        payload["input"]["output_fps"] = float(args.output_fps)
+    if int(args.stream_file_nvvfx) in {0, 1}:
+        payload["input"]["stream_file_nvvfx"] = int(args.stream_file_nvvfx)
+    if str(args.nvvfx_quality or "").strip():
+        payload["input"]["nvvfx_quality"] = str(args.nvvfx_quality or "").strip()
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         payload["input"]["hf_token"] = hf_token

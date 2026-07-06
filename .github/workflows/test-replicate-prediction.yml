@@ -75,6 +75,26 @@ on:
         description: "Generated smoke audio duration in seconds"
         required: false
         default: "2.0"
+      face_restore:
+        description: "Optional GFPGAN face restore override. -1 keeps deployment default."
+        required: false
+        default: "-1"
+      stream_file_interpolation:
+        description: "Optional interpolation override: torch-rife, off, or empty for default."
+        required: false
+        default: ""
+      output_fps:
+        description: "Optional output FPS override. 0 keeps auto/default."
+        required: false
+        default: "0"
+      stream_file_nvvfx:
+        description: "Optional cold-start NVIDIA VSR override: -1 default, 0 off, 1 on."
+        required: false
+        default: "-1"
+      nvvfx_quality:
+        description: "Optional cold-start NVIDIA VSR quality."
+        required: false
+        default: ""
 
 jobs:
   test_prediction:
@@ -109,4 +129,9 @@ jobs:
             --infer-frames "${{ inputs.infer_frames }}" \
             --motion-file "${{ inputs.motion_file }}" \
             --motion-mode "${{ inputs.motion_mode }}" \
-            --audio-seconds "${{ inputs.audio_seconds }}"
+            --audio-seconds "${{ inputs.audio_seconds }}" \
+            --face-restore "${{ inputs.face_restore }}" \
+            --stream-file-interpolation "${{ inputs.stream_file_interpolation }}" \
+            --output-fps "${{ inputs.output_fps }}" \
+            --stream-file-nvvfx "${{ inputs.stream_file_nvvfx }}" \
+            --nvvfx-quality "${{ inputs.nvvfx_quality }}"
