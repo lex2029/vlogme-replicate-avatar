@@ -17,7 +17,7 @@ speech audio file and return a generated avatar MP4.
   assets.
 - The default runtime profile targets Replicate `gpu-a100-large-2x`:
   `VLOGME_AVATAR_GPU_LAYOUT=dit2`, using both A100 cards for distributed
-  DiT/denoise. The default first-pass Replicate canvas is `384*256` with 4
+  DiT/denoise. The default first-pass Replicate canvas is `384*704` with 6
   inference steps and face restore disabled; raise `VLOGME_AVATAR_SIZE`,
   `VLOGME_AVATAR_SAMPLE_STEPS`, and `VLOGME_AVATAR_FACE_RESTORE` after the
   baseline path is stable. Set `VLOGME_AVATAR_GPU_LAYOUT=split` to put
