@@ -325,6 +325,10 @@ class Predictor(BasePredictor):
         self,
         avatar_image: Path = Input(description="Face/avatar reference image"),
         audio: Path = Input(description="Speech audio to animate"),
+        sample_steps: int = Input(
+            description="Denoising steps. Use 4 for smoke tests, 6+ for quality checks.",
+            default=0,
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -339,9 +343,11 @@ class Predictor(BasePredictor):
                 os.environ["SMARTBLOG_HF_TOKEN"] = token
                 _log("HF token provided")
         self._ensure_runtime_ready()
-        return asyncio.run(self._predict_async(avatar_image=avatar_image, audio=audio))
+        return asyncio.run(
+            self._predict_async(avatar_image=avatar_image, audio=audio, sample_steps_override=sample_steps)
+        )
 
-    async def _predict_async(self, *, avatar_image: Path, audio: Path) -> Path:
+    async def _predict_async(self, *, avatar_image: Path, audio: Path, sample_steps_override: int = 0) -> Path:
         prediction_started_at = time.monotonic()
         _log("starting avatar render")
         os.chdir(str(RUNTIME_ROOT))
@@ -351,6 +357,9 @@ class Predictor(BasePredictor):
         if size_profile not in {"b200", "b300"}:
             size_profile = "b200"
         sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "6") or 6)
+        if int(sample_steps_override or 0) > 0:
+            sample_steps = int(sample_steps_override)
+        sample_steps = int(max(1, min(40, int(sample_steps))))
         seed = int(os.environ.get("VLOGME_AVATAR_SEED", "420") or 420)
         face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.0") or 0.0)
         background_restore = float(os.environ.get("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0") or 0.0)

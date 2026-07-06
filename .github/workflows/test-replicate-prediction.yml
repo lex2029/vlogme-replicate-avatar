@@ -15,6 +15,14 @@ on:
         description: "Maximum time to wait for the prediction"
         required: true
         default: "5400"
+      sample_steps:
+        description: "Optional denoising steps override. Use 4 for smoke, 6+ for quality."
+        required: false
+        default: "4"
+      audio_seconds:
+        description: "Generated smoke audio duration in seconds"
+        required: false
+        default: "2.0"
 
 jobs:
   test_prediction:
@@ -34,4 +42,6 @@ jobs:
           python3 scripts/test_replicate_prediction.py \
             --model "${{ inputs.model_name }}" \
             --deployment "${{ inputs.deployment }}" \
-            --timeout-sec "${{ inputs.timeout_sec }}"
+            --timeout-sec "${{ inputs.timeout_sec }}" \
+            --sample-steps "${{ inputs.sample_steps }}" \
+            --audio-seconds "${{ inputs.audio_seconds }}"

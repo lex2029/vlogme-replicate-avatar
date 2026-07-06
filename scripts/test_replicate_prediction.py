@@ -35,6 +35,16 @@ def _request(method: str, url: str, *, token: str, body: dict | None = None) -> 
         raise RuntimeError(f"Replicate API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
 
 
+def _try_cancel(cancel_url: str, *, token: str, prediction_id: str) -> None:
+    if not cancel_url:
+        return
+    try:
+        _request("POST", cancel_url, token=token)
+        print(f"Cancel requested for prediction {prediction_id}")
+    except Exception as exc:
+        print(f"Warning: failed to cancel prediction {prediction_id}: {exc}", file=sys.stderr)
+
+
 def _data_uri(path: Path, mime_type: str) -> str:
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
@@ -89,6 +99,8 @@ def main() -> int:
     parser.add_argument("--image", default="runtime/SmartBlog-Live/assets/ref_user_photo.jpg")
     parser.add_argument("--timeout-sec", type=int, default=5400)
     parser.add_argument("--poll-sec", type=int, default=30)
+    parser.add_argument("--sample-steps", type=int, default=0)
+    parser.add_argument("--audio-seconds", type=float, default=2.0)
     args = parser.parse_args()
 
     token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
@@ -100,7 +112,7 @@ def main() -> int:
     audio_path = root / "tmp" / "replicate-smoke-speech.wav"
     if not image_path.exists():
         raise RuntimeError(f"Missing smoke image: {image_path}")
-    _make_smoke_audio(audio_path)
+    _make_smoke_audio(audio_path, seconds=float(args.audio_seconds))
 
     payload = {
         "input": {
@@ -108,6 +120,8 @@ def main() -> int:
             "audio": _data_uri(audio_path, "audio/wav"),
         },
     }
+    if int(args.sample_steps or 0) > 0:
+        payload["input"]["sample_steps"] = int(args.sample_steps)
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         payload["input"]["hf_token"] = hf_token
@@ -129,38 +143,44 @@ def main() -> int:
     )
     prediction_id = prediction.get("id")
     get_url = (prediction.get("urls") or {}).get("get")
+    cancel_url = (prediction.get("urls") or {}).get("cancel")
     if not prediction_id or not get_url:
         raise RuntimeError(f"Prediction create response is missing id/get URL: {prediction!r}")
     print(f"Prediction started: {prediction_id}")
 
     deadline = time.time() + args.timeout_sec
     last_status = ""
-    while time.time() < deadline:
-        prediction = _request("GET", get_url, token=token)
-        status = str(prediction.get("status") or "")
-        if status != last_status:
-            print(f"Status: {status}")
-            last_status = status
-        if status in {"succeeded", "failed", "canceled"}:
-            print(json.dumps(
-                {
-                    "id": prediction.get("id"),
-                    "status": status,
-                    "output": prediction.get("output"),
-                    "error": prediction.get("error"),
-                    "metrics": prediction.get("metrics"),
-                },
-                indent=2,
-                ensure_ascii=False,
-            ))
-            logs = _tail_logs(prediction)
-            if logs:
-                print("Log tail:")
-                print(logs)
-            return 0 if status == "succeeded" else 1
-        time.sleep(args.poll_sec)
+    try:
+        while time.time() < deadline:
+            prediction = _request("GET", get_url, token=token)
+            status = str(prediction.get("status") or "")
+            if status != last_status:
+                print(f"Status: {status}")
+                last_status = status
+            if status in {"succeeded", "failed", "canceled"}:
+                print(json.dumps(
+                    {
+                        "id": prediction.get("id"),
+                        "status": status,
+                        "output": prediction.get("output"),
+                        "error": prediction.get("error"),
+                        "metrics": prediction.get("metrics"),
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ))
+                logs = _tail_logs(prediction)
+                if logs:
+                    print("Log tail:")
+                    print(logs)
+                return 0 if status == "succeeded" else 1
+            time.sleep(args.poll_sec)
+    except KeyboardInterrupt:
+        _try_cancel(str(cancel_url or ""), token=token, prediction_id=str(prediction_id))
+        raise
 
     print(f"Timed out waiting for prediction {prediction_id}", file=sys.stderr)
+    _try_cancel(str(cancel_url or ""), token=token, prediction_id=str(prediction_id))
     return 1
 
 

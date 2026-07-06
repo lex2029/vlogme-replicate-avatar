@@ -19,9 +19,11 @@ speech audio file and return a generated avatar MP4.
   `VLOGME_AVATAR_GPU_LAYOUT=dit2`, using both A100 cards for distributed
   DiT/denoise. The default first-pass Replicate canvas is portrait `704*384`
   (Wan/model order is height*width), with 32-frame inference windows, 6
-  inference steps, and face restore disabled; tune `VLOGME_AVATAR_SIZE`,
-  `VLOGME_AVATAR_SAMPLE_STEPS`, and `VLOGME_AVATAR_FACE_RESTORE` after the
-  baseline path is stable. Set `VLOGME_AVATAR_GPU_LAYOUT=split` to put
+  inference steps, and face restore disabled. The public `predict()` input also
+  accepts `sample_steps`; use `4` for smoke tests and `6+` for quality checks.
+  Tune `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
+  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. Set
+  `VLOGME_AVATAR_GPU_LAYOUT=split` to put
   DiT/denoise on one A100 and VAE/decode/postprocessing on the second, or
   `single` for one-GPU debugging.
 - Secrets are not needed for the first audio-driven avatar test.
