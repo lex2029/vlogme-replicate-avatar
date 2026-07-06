@@ -31,6 +31,8 @@ required_asset_files=(
   "worker_assets/enchenh2d/models/GFPGANv1.4.pth"
   "gfpgan/weights/detection_Resnet50_Final.pth"
   "gfpgan/weights/parsing_parsenet.pth"
+  "RIFE-safetensors/flownet.safetensors"
+  "RIFE-safetensors/interpolation_model.py"
 )
 
 required_asset_min_bytes() {
@@ -41,6 +43,8 @@ required_asset_min_bytes() {
     "worker_assets/enchenh2d/models/GFPGANv1.4.pth") printf '%s\n' 1000000 ;;
     "gfpgan/weights/detection_Resnet50_Final.pth") printf '%s\n' 1000000 ;;
     "gfpgan/weights/parsing_parsenet.pth") printf '%s\n' 1000000 ;;
+    "RIFE-safetensors/flownet.safetensors") printf '%s\n' 10000000 ;;
+    "RIFE-safetensors/interpolation_model.py") printf '%s\n' 1000 ;;
     *) printf '%s\n' 1 ;;
   esac
 }

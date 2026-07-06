@@ -49,7 +49,8 @@ ensure_layout() {
   mkdir -p \
     "$ASSET_ROOT/ckpt" \
     "$ASSET_ROOT/worker_assets/enchenh2d/models" \
-    "$ASSET_ROOT/gfpgan/weights"
+    "$ASSET_ROOT/gfpgan/weights" \
+    "$ASSET_ROOT/RIFE-safetensors"
 }
 
 download_tree() {
@@ -95,6 +96,8 @@ required_file_min_bytes() {
     "worker_assets/enchenh2d/models/GFPGANv1.4.pth") printf '%s\n' 1000000 ;;
     "gfpgan/weights/detection_Resnet50_Final.pth") printf '%s\n' 1000000 ;;
     "gfpgan/weights/parsing_parsenet.pth") printf '%s\n' 1000000 ;;
+    "RIFE-safetensors/flownet.safetensors") printf '%s\n' 10000000 ;;
+    "RIFE-safetensors/interpolation_model.py") printf '%s\n' 1000 ;;
     *) printf '%s\n' 1 ;;
   esac
 }
@@ -183,6 +186,34 @@ download_enhancers() {
   rm -rf "$src"
 }
 
+download_rife() {
+  local repo_id="${1:-TensorForger/RIFE-safetensors}"
+  local include_glob="${2:-*}"
+  local revision="${3:-}"
+  local target="$ASSET_ROOT/RIFE-safetensors"
+  local tmp="$ASSET_ROOT/.rife-download"
+
+  if [[ "$FORCE_DOWNLOAD" != "1" \
+    && -f "$target/flownet.safetensors" \
+    && -f "$target/interpolation_model.py" ]]; then
+    log "skip rife; already present"
+    return 0
+  fi
+
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  local cmd=("$HF_CLI_BIN" download "$repo_id" --local-dir "$tmp" --include "$include_glob")
+  if [[ -n "$revision" ]]; then
+    cmd+=(--revision "$revision")
+  fi
+
+  log "downloading rife from $repo_id include=$include_glob"
+  "${cmd[@]}"
+  install -D -m 0644 "$tmp/flownet.safetensors" "$target/flownet.safetensors"
+  install -D -m 0644 "$tmp/interpolation_model.py" "$target/interpolation_model.py"
+  rm -rf "$tmp"
+}
+
 verify_required_files() {
   local required_files=(
     "ckpt/Wan2.2-S2V-14B/config.json"
@@ -193,6 +224,8 @@ verify_required_files() {
     "worker_assets/enchenh2d/models/GFPGANv1.4.pth"
     "gfpgan/weights/detection_Resnet50_Final.pth"
     "gfpgan/weights/parsing_parsenet.pth"
+    "RIFE-safetensors/flownet.safetensors"
+    "RIFE-safetensors/interpolation_model.py"
   )
   local rel
   for rel in "${required_files[@]}"; do
@@ -216,6 +249,7 @@ main() {
   local lora_repo="${HF_LORA_REPO_ID:-$worker_repo}"
   local enhancer_repo="${HF_ENHANCER_MODELS_REPO_ID:-$worker_repo}"
   local face_repo="${HF_FACE_WEIGHTS_REPO_ID:-$worker_repo}"
+  local rife_repo="${HF_RIFE_REPO_ID:-TensorForger/RIFE-safetensors}"
 
   download_tree_if_missing_any \
     "base model" \
@@ -256,6 +290,11 @@ main() {
       "${HF_FACE_WEIGHTS_INCLUDE:-enhancers/*}" \
       "${HF_FACE_WEIGHTS_REVISION:-}"
   fi
+
+  download_rife \
+    "$rife_repo" \
+    "${HF_RIFE_INCLUDE:-*}" \
+    "${HF_RIFE_REVISION:-}"
 
   verify_required_files
   log "all required worker weights are present under $ASSET_ROOT"

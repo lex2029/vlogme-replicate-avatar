@@ -3865,6 +3865,28 @@ class WanS2V:
         stream_file_interpolation_mode = str(stream_file_interpolation or "").strip().lower()
         if stream_file_interpolation_mode in {"none", "off", "0", "false", "no"}:
             stream_file_interpolation_mode = ""
+        def _stream_file_env_flag(name: str, default: str = "0") -> bool:
+            raw = str(os.getenv(name, default) or default).strip().lower()
+            return raw in {"1", "true", "yes", "on"}
+
+        stream_file_nvvfx_enabled = bool(
+            _stream_file_env_flag(
+                "SMARTBLOG_STREAM_FILE_NVVFX",
+                os.getenv("REMOTE_EDGE_FILE_NVVFX", os.getenv("REMOTE_EDGE_FILE_NVIDIA_VFX", "0")),
+            )
+        )
+        stream_file_nvvfx_fail_open = bool(_stream_file_env_flag("SMARTBLOG_STREAM_FILE_NVVFX_FAIL_OPEN", "1"))
+        stream_file_nvvfx_quality = str(
+            os.getenv(
+                "SMARTBLOG_STREAM_FILE_NVVFX_QUALITY",
+                os.getenv("REMOTE_EDGE_FILE_NVVFX_QUALITY", "HIGH"),
+            )
+            or "HIGH"
+        ).strip().upper()
+        if stream_file_nvvfx_quality.startswith(("DEBLUR_", "DENOISE_", "HIGHBITRATE_")):
+            stream_file_nvvfx_quality = str(
+                os.getenv("SMARTBLOG_STREAM_FILE_NVVFX_EFFECT_FALLBACK_QUALITY", "HIGH") or "HIGH"
+            ).strip().upper()
         stream_file_enabled = bool(stream_file_path) and int(rank) == int(decode_rank)
         stream_file_queue: deque[dict[str, Any]] = deque()
         stream_file_cv = threading.Condition()
@@ -3876,12 +3898,18 @@ class WanS2V:
         stream_file_blocks = 0
         stream_file_enqueue_s = 0.0
         stream_file_rife_s = 0.0
+        stream_file_nvvfx_s = 0.0
+        stream_file_nvvfx_load_s = 0.0
         stream_file_resize_s = 0.0
         stream_file_pack_s = 0.0
         stream_file_write_s = 0.0
         stream_file_started_s = 0.0
         stream_file_finished_s = 0.0
         stream_file_last_frame: torch.Tensor | None = None
+        stream_file_nvvfx_sr: Any | None = None
+        stream_file_nvvfx_shape: tuple[int, int, int, int, str, int] | None = None
+        stream_file_nvvfx_stream_ptr = 0
+        stream_file_nvvfx_failed = False
         stream_file_progress_path = f"{stream_file_path}.progress.json" if bool(stream_file_path) else ""
         raw_frame_bytes = max(1, int(WIDTH) * int(HEIGHT) * 3)
         try:
@@ -4898,6 +4926,10 @@ class WanS2V:
                 "blocks": int(stream_file_blocks),
                 "queue_blocks": int(len(stream_file_queue)),
                 "rife_sec": float(stream_file_rife_s),
+                "nvvfx_sec": float(stream_file_nvvfx_s),
+                "nvvfx_load_sec": float(stream_file_nvvfx_load_s),
+                "nvvfx_enabled": bool(stream_file_nvvfx_enabled) and not bool(stream_file_nvvfx_failed),
+                "nvvfx_failed": bool(stream_file_nvvfx_failed),
                 "resize_sec": float(stream_file_resize_s),
                 "pack_sec": float(stream_file_pack_s),
                 "write_sec": float(stream_file_write_s),
@@ -5069,6 +5101,133 @@ class WanS2V:
             stream_file_rife_s += float(time.perf_counter() - rife_t0)
             return out
 
+        def _stream_file_nvvfx_device_index() -> int:
+            raw = str(
+                os.getenv(
+                    "SMARTBLOG_STREAM_FILE_NVVFX_DEVICE",
+                    os.getenv("REMOTE_EDGE_FILE_NVVFX_DEVICE", ""),
+                )
+                or ""
+            ).strip().lower()
+            if raw.startswith("cuda:"):
+                raw = raw.split(":", 1)[1]
+            if raw.isdigit():
+                return max(0, int(raw))
+            try:
+                device_index = getattr(torch.device(self.device), "index", None)
+                if device_index is not None:
+                    return max(0, int(device_index))
+            except Exception:
+                pass
+            try:
+                return max(0, int(torch.cuda.current_device()))
+            except Exception:
+                return 0
+
+        def _stream_file_get_nvvfx(
+            *,
+            source_h: int,
+            source_w: int,
+            output_h: int,
+            output_w: int,
+        ) -> Any | None:
+            nonlocal stream_file_nvvfx_sr, stream_file_nvvfx_shape, stream_file_nvvfx_stream_ptr
+            nonlocal stream_file_nvvfx_load_s, stream_file_nvvfx_failed
+            if not bool(stream_file_nvvfx_enabled) or bool(stream_file_nvvfx_failed):
+                return None
+            if int(output_w) <= int(source_w) and int(output_h) <= int(source_h):
+                return None
+            device_index = int(_stream_file_nvvfx_device_index())
+            shape = (
+                int(source_h),
+                int(source_w),
+                int(output_h),
+                int(output_w),
+                str(stream_file_nvvfx_quality),
+                int(device_index),
+            )
+            if stream_file_nvvfx_sr is not None and stream_file_nvvfx_shape == shape:
+                return stream_file_nvvfx_sr
+            try:
+                from nvvfx import VideoSuperRes
+
+                quality_name = str(stream_file_nvvfx_quality or "HIGH").strip().upper()
+                if quality_name not in VideoSuperRes.QualityLevel.__members__:
+                    fallback = str(
+                        os.getenv("SMARTBLOG_STREAM_FILE_NVVFX_EFFECT_FALLBACK_QUALITY", "HIGH") or "HIGH"
+                    ).strip().upper()
+                    quality_name = fallback if fallback in VideoSuperRes.QualityLevel.__members__ else "HIGH"
+                try:
+                    if stream_file_nvvfx_sr is not None and hasattr(stream_file_nvvfx_sr, "close"):
+                        stream_file_nvvfx_sr.close()
+                except Exception:
+                    pass
+                torch.cuda.set_device(int(device_index))
+                stream_file_nvvfx_stream_ptr = int(torch.cuda.current_stream(device=int(device_index)).cuda_stream)
+                sr = VideoSuperRes(device=int(device_index), quality=VideoSuperRes.QualityLevel[quality_name])
+                try:
+                    sr.input_width = int(source_w)
+                    sr.input_height = int(source_h)
+                except Exception:
+                    pass
+                sr.output_width = int(output_w)
+                sr.output_height = int(output_h)
+                load_t0 = time.perf_counter()
+                sr.load()
+                torch.cuda.synchronize(device=int(device_index))
+                stream_file_nvvfx_load_s += float(time.perf_counter() - float(load_t0))
+                stream_file_nvvfx_sr = sr
+                stream_file_nvvfx_shape = shape
+                print(
+                    f"Rank {rank}: stream-file NVIDIA VSR loaded: "
+                    f"{int(source_w)}x{int(source_h)}->{int(output_w)}x{int(output_h)} "
+                    f"quality={quality_name} device=cuda:{int(device_index)}",
+                    flush=True,
+                )
+                return stream_file_nvvfx_sr
+            except Exception as e:
+                stream_file_nvvfx_failed = True
+                print(f"Rank {rank}: stream-file NVIDIA VSR unavailable: {e}", flush=True)
+                if not bool(stream_file_nvvfx_fail_open):
+                    raise
+                return None
+
+        def _stream_file_apply_nvvfx(frames_01: torch.Tensor) -> torch.Tensor:
+            nonlocal stream_file_nvvfx_s, stream_file_nvvfx_failed
+            if not bool(stream_file_nvvfx_enabled) or bool(stream_file_nvvfx_failed):
+                return frames_01
+            if int(frames_01.shape[0]) <= 0:
+                return frames_01
+            out_w = int(stream_file_output_w or frames_01.shape[3])
+            out_h = int(stream_file_output_h or frames_01.shape[2])
+            if int(out_w) <= int(frames_01.shape[3]) and int(out_h) <= int(frames_01.shape[2]):
+                return frames_01
+            try:
+                sr = _stream_file_get_nvvfx(
+                    source_h=int(frames_01.shape[2]),
+                    source_w=int(frames_01.shape[3]),
+                    output_h=int(out_h),
+                    output_w=int(out_w),
+                )
+                if sr is None:
+                    return frames_01
+                vfx_t0 = time.perf_counter()
+                outputs: list[torch.Tensor] = []
+                with torch.inference_mode():
+                    for frame_01 in frames_01:
+                        frame = frame_01.detach().to(device=self.device, dtype=torch.float32, non_blocking=True).contiguous()
+                        vfx_output = sr.run(frame, stream_ptr=int(stream_file_nvvfx_stream_ptr))
+                        outputs.append(torch.from_dlpack(vfx_output.image).clone().clamp_(0.0, 1.0))
+                out = torch.stack(outputs, dim=0).to(device=self.device, dtype=frames_01.dtype, non_blocking=True).contiguous()
+                stream_file_nvvfx_s += float(time.perf_counter() - float(vfx_t0))
+                return out
+            except Exception as e:
+                stream_file_nvvfx_failed = True
+                print(f"Rank {rank}: stream-file NVIDIA VSR failed open: {e}", flush=True)
+                if not bool(stream_file_nvvfx_fail_open):
+                    raise
+                return frames_01
+
         def _stream_file_resize_output(frames_01: torch.Tensor) -> torch.Tensor:
             nonlocal stream_file_resize_s
             out_w = int(stream_file_output_w or frames_01.shape[3])
@@ -5105,6 +5264,7 @@ class WanS2V:
                     return 0
                 if int(frames_01.shape[0]) > int(remaining):
                     frames_01 = frames_01[: int(remaining)].contiguous()
+            frames_01 = _stream_file_apply_nvvfx(frames_01)
             frames_01 = _stream_file_resize_output(frames_01)
             payload = _stream_file_tensor_to_rgb24(frames_01)
             write_t0 = time.perf_counter()
@@ -5136,7 +5296,8 @@ class WanS2V:
                     print(
                         f"Rank {rank}: stream-file encoder started: output={stream_file_path} "
                         f"size={int(stream_file_output_w)}x{int(stream_file_output_h)} "
-                        f"fps={float(stream_file_fps):.3f} interpolation={stream_file_interpolation_mode or 'off'}",
+                        f"fps={float(stream_file_fps):.3f} interpolation={stream_file_interpolation_mode or 'off'} "
+                        f"nvvfx={1 if bool(stream_file_nvvfx_enabled) else 0} quality={stream_file_nvvfx_quality}",
                         flush=True,
                     )
                     _stream_file_write_progress(phase="inference")
@@ -5174,6 +5335,7 @@ class WanS2V:
                                 f"TPP stream-file timing job={str(job_id or '-')} "
                                 f"blocks={int(stream_file_blocks)} frames={int(stream_file_frames_in)}->{int(stream_file_frames_out)} "
                                 f"q={int(len(stream_file_queue))} rife={float(stream_file_rife_s):.3f}s "
+                                f"nvvfx={float(stream_file_nvvfx_s):.3f}s load={float(stream_file_nvvfx_load_s):.3f}s "
                                 f"resize={float(stream_file_resize_s):.3f}s pack={float(stream_file_pack_s):.3f}s "
                                 f"write={float(stream_file_write_s):.3f}s",
                                 flush=True,
@@ -5212,6 +5374,11 @@ class WanS2V:
                     try:
                         if log_f is not None:
                             log_f.close()
+                    except Exception:
+                        pass
+                    try:
+                        if stream_file_nvvfx_sr is not None and hasattr(stream_file_nvvfx_sr, "close"):
+                            stream_file_nvvfx_sr.close()
                     except Exception:
                         pass
                     stream_file_finished_s = float(time.perf_counter())
@@ -7103,7 +7270,12 @@ class WanS2V:
                                 # encoder boundary.
                                 post_vae_output_h = int(HEIGHT)
                                 post_vae_output_w = int(WIDTH)
-                                if need_stream_file_frames and int(stream_file_output_h or 0) > 0 and int(stream_file_output_w or 0) > 0:
+                                if (
+                                    need_stream_file_frames
+                                    and not bool(stream_file_nvvfx_enabled)
+                                    and int(stream_file_output_h or 0) > 0
+                                    and int(stream_file_output_w or 0) > 0
+                                ):
                                     post_vae_output_h = int(stream_file_output_h)
                                     post_vae_output_w = int(stream_file_output_w)
                                 enhanced_tchw = self._enhance_live_raw_frames(
@@ -7396,6 +7568,7 @@ class WanS2V:
                     f"stream_file={1 if bool(stream_file_enabled) else 0} "
                     f"sf_blocks={int(stream_file_blocks)} sf_frames={int(stream_file_frames_in)}->{int(stream_file_frames_out)} "
                     f"sf_enq={float(stream_file_enqueue_s):.3f}s sf_rife={float(stream_file_rife_s):.3f}s "
+                    f"sf_nvvfx={float(stream_file_nvvfx_s):.3f}s sf_nvvfx_load={float(stream_file_nvvfx_load_s):.3f}s "
                     f"sf_resize={float(stream_file_resize_s):.3f}s sf_pack={float(stream_file_pack_s):.3f}s "
                     f"sf_write={float(stream_file_write_s):.3f}s",
                     flush=True,
@@ -7469,6 +7642,7 @@ class WanS2V:
                             f"Rank {rank}: stream-file done: output={stream_file_path} "
                             f"blocks={int(stream_file_blocks)} frames={int(stream_file_frames_in)}->{int(stream_file_frames_out)} "
                             f"enqueue={float(stream_file_enqueue_s):.3f}s rife={float(stream_file_rife_s):.3f}s "
+                            f"nvvfx={float(stream_file_nvvfx_s):.3f}s nvvfx_load={float(stream_file_nvvfx_load_s):.3f}s "
                             f"resize={float(stream_file_resize_s):.3f}s pack={float(stream_file_pack_s):.3f}s "
                             f"write={float(stream_file_write_s):.3f}s "
                             f"wall={max(0.0, float(stream_file_finished_s - stream_file_started_s)):.3f}s",

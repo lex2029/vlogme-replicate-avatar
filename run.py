@@ -177,6 +177,39 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_CRF", "19")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_ENHANCER", "1")
+    os.environ.setdefault(
+        "LIVE_RAW_POST_VAE_ENHANCER_MODELS_DIR",
+        str(asset_root / "worker_assets" / "enchenh2d" / "models"),
+    )
+    os.environ.setdefault("LIVE_RAW_POST_VAE_ENHANCER_TRT", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_PHASE_TIMING", "1")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_UPSCALE_X2", "1")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
+    os.environ.setdefault("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384")
+    os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.75")
+    os.environ.setdefault("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0")
+    os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "torch-rife")
+    os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1")
+    os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH")
+    os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX_FAIL_OPEN", "1")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1"))
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX_QUALITY", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"))
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_NVVFX_FAIL_OPEN", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_FAIL_OPEN", "1"))
+    os.environ.setdefault("REMOTE_EDGE_TORCH_RIFE_MODEL_DIR", str(asset_root / "RIFE-safetensors"))
+    os.environ.setdefault("REMOTE_EDGE_TORCH_RIFE_WEIGHTS", str(asset_root / "RIFE-safetensors" / "flownet.safetensors"))
+    os.environ.setdefault("REMOTE_EDGE_TORCH_RIFE_DTYPE", "float16")
+    os.environ.setdefault("REMOTE_EDGE_TORCH_RIFE_BATCH_PAIRS", "4")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_RIFE_MODEL_DIR", str(asset_root / "RIFE-safetensors"))
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_RIFE_WEIGHTS", str(asset_root / "RIFE-safetensors" / "flownet.safetensors"))
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_RIFE_DTYPE", "float16")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_RIFE_BATCH_PAIRS", "4")
     os.environ.setdefault("SMARTBLOG_RENDER_SINGLE_AVATAR_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_AVATAR_LIVEAUDIO_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_TRIM_TRAILING_SILENCE", "1")
@@ -295,6 +328,55 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast"),
         "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "19"),
         "SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS": os.environ.get("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4"),
+        "LIVE_RAW_POST_VAE_ENHANCER": os.environ.get("LIVE_RAW_POST_VAE_ENHANCER", "1"),
+        "LIVE_RAW_POST_VAE_ENHANCER_MODELS_DIR": os.environ.get(
+            "LIVE_RAW_POST_VAE_ENHANCER_MODELS_DIR",
+            str(asset_root / "worker_assets" / "enchenh2d" / "models"),
+        ),
+        "LIVE_RAW_POST_VAE_ENHANCER_TRT": os.environ.get("LIVE_RAW_POST_VAE_ENHANCER_TRT", "0"),
+        "LIVE_RAW_POST_VAE_PHASE_TIMING": os.environ.get("LIVE_RAW_POST_VAE_PHASE_TIMING", "1"),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_AMP": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0"),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0"),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1"),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED": os.environ.get(
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1"
+        ),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH": os.environ.get(
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0"
+        ),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE": os.environ.get(
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512"
+        ),
+        "LIVE_RAW_POST_VAE_UPSCALE_X2": os.environ.get("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"),
+        "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"),
+        "SMARTBLOG_MEDIA_TRT_MAX_DIM": os.environ.get("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384"),
+        "REMOTE_EDGE_TORCH_RIFE_MODEL_DIR": os.environ.get(
+            "REMOTE_EDGE_TORCH_RIFE_MODEL_DIR", str(asset_root / "RIFE-safetensors")
+        ),
+        "REMOTE_EDGE_TORCH_RIFE_WEIGHTS": os.environ.get(
+            "REMOTE_EDGE_TORCH_RIFE_WEIGHTS", str(asset_root / "RIFE-safetensors" / "flownet.safetensors")
+        ),
+        "REMOTE_EDGE_TORCH_RIFE_DTYPE": os.environ.get("REMOTE_EDGE_TORCH_RIFE_DTYPE", "float16"),
+        "REMOTE_EDGE_TORCH_RIFE_BATCH_PAIRS": os.environ.get("REMOTE_EDGE_TORCH_RIFE_BATCH_PAIRS", "4"),
+        "SMARTBLOG_STREAM_FILE_RIFE_MODEL_DIR": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_RIFE_MODEL_DIR", str(asset_root / "RIFE-safetensors")
+        ),
+        "SMARTBLOG_STREAM_FILE_RIFE_WEIGHTS": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_RIFE_WEIGHTS", str(asset_root / "RIFE-safetensors" / "flownet.safetensors")
+        ),
+        "SMARTBLOG_STREAM_FILE_RIFE_DTYPE": os.environ.get("SMARTBLOG_STREAM_FILE_RIFE_DTYPE", "float16"),
+        "SMARTBLOG_STREAM_FILE_RIFE_BATCH_PAIRS": os.environ.get("SMARTBLOG_STREAM_FILE_RIFE_BATCH_PAIRS", "4"),
+        "SMARTBLOG_STREAM_FILE_NVVFX": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_NVVFX", os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1")
+        ),
+        "SMARTBLOG_STREAM_FILE_NVVFX_QUALITY": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_NVVFX_QUALITY",
+            os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"),
+        ),
+        "SMARTBLOG_STREAM_FILE_NVVFX_FAIL_OPEN": os.environ.get(
+            "SMARTBLOG_STREAM_FILE_NVVFX_FAIL_OPEN",
+            os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX_FAIL_OPEN", "1"),
+        ),
         "SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK": os.environ.get(
             "VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK",
             os.environ.get("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8"),
@@ -402,6 +484,8 @@ class Predictor(BasePredictor):
         infer_frames: int = 0,
         motion_file: int = -1,
         motion_mode: str = "",
+        stream_file_nvvfx: int = -1,
+        nvvfx_quality: str = "",
     ) -> None:
         requested: dict[str, str] = {}
         layout = str(gpu_layout or "").strip().lower()
@@ -475,6 +559,21 @@ class Predictor(BasePredictor):
             else:
                 raise RuntimeError(f"Unsupported motion_mode override: {motion_mode_override}")
 
+        try:
+            nvvfx_override = int(stream_file_nvvfx)
+        except Exception:
+            nvvfx_override = -1
+        if nvvfx_override in {0, 1}:
+            requested["VLOGME_AVATAR_STREAM_FILE_NVVFX"] = "1" if nvvfx_override == 1 else "0"
+            requested["SMARTBLOG_STREAM_FILE_NVVFX"] = requested["VLOGME_AVATAR_STREAM_FILE_NVVFX"]
+
+        nvvfx_quality_override = str(nvvfx_quality or "").strip().upper()
+        if nvvfx_quality_override:
+            if not nvvfx_quality_override.replace("_", "").isalnum():
+                raise RuntimeError(f"Unsupported nvvfx_quality override: {nvvfx_quality_override}")
+            requested["VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY"] = nvvfx_quality_override
+            requested["SMARTBLOG_STREAM_FILE_NVVFX_QUALITY"] = nvvfx_quality_override
+
         if not requested:
             return
         if self.runtime_ready:
@@ -500,6 +599,10 @@ class Predictor(BasePredictor):
             "VLOGME_AVATAR_INFER_FRAMES",
             os.environ.get("INFER_FRAMES", "32"),
         )
+        os.environ["SMARTBLOG_STREAM_FILE_NVVFX"] = os.environ.get("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1")
+        os.environ["SMARTBLOG_STREAM_FILE_NVVFX_QUALITY"] = os.environ.get(
+            "VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"
+        )
         _append_replicate_profile_overrides(
             self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
@@ -516,6 +619,8 @@ class Predictor(BasePredictor):
             f"infer_frames={os.environ.get('INFER_FRAMES', '')} "
             f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
             f"motion_mode={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE', '')} "
+            f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
+            f"nvvfx_quality={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX_QUALITY', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
             f"fp8_quant_compile={os.environ.get('LIVEAVATAR_FP8_QUANT_COMPILE', '0')} "
             f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
@@ -608,6 +713,26 @@ class Predictor(BasePredictor):
             description="Optional cold-start file-render motion-state mode: latent or decoded.",
             default="",
         ),
+        face_restore: float = Input(
+            description="GFPGAN face restore strength from 0.0 to 1.0. -1 keeps the deployment default.",
+            default=-1.0,
+        ),
+        stream_file_interpolation: str = Input(
+            description="Output interpolation mode: torch-rife/rife, off, or empty for the deployment default.",
+            default="",
+        ),
+        output_fps: int = Input(
+            description="Output FPS. 0 auto-selects 32 FPS for RIFE and 16 FPS otherwise.",
+            default=0,
+        ),
+        stream_file_nvvfx: int = Input(
+            description="Optional cold-start NVIDIA VSR override: -1 default, 0 disabled, 1 enabled.",
+            default=-1,
+        ),
+        nvvfx_quality: str = Input(
+            description="Optional cold-start NVIDIA VSR quality, for example HIGH or ULTRA.",
+            default="",
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -630,6 +755,8 @@ class Predictor(BasePredictor):
             infer_frames=infer_frames,
             motion_file=motion_file,
             motion_mode=motion_mode,
+            stream_file_nvvfx=stream_file_nvvfx,
+            nvvfx_quality=nvvfx_quality,
         )
         stack_watchdog_sec = _env_int("VLOGME_AVATAR_STACK_WATCHDOG_SEC", 180)
         if int(stack_watchdog_sec) > 0:
@@ -653,6 +780,9 @@ class Predictor(BasePredictor):
                     audio=audio,
                     sample_steps_override=sample_steps,
                     timeout_sec=timeout_sec,
+                    face_restore_override=face_restore,
+                    stream_file_interpolation_override=stream_file_interpolation,
+                    output_fps_override=output_fps,
                 )
             )
             _log("avatar render coroutine completed")
@@ -692,18 +822,33 @@ class Predictor(BasePredictor):
         audio: Path,
         sample_steps_override: int = 0,
         timeout_sec: int = 0,
+        face_restore_override: float = -1.0,
+        stream_file_interpolation_override: str = "",
+        output_fps_override: int = 0,
     ) -> Path:
         coro = self._predict_async(
             avatar_image=avatar_image,
             audio=audio,
             sample_steps_override=sample_steps_override,
+            face_restore_override=face_restore_override,
+            stream_file_interpolation_override=stream_file_interpolation_override,
+            output_fps_override=output_fps_override,
         )
         if int(timeout_sec or 0) <= 0:
             return await coro
         _log(f"avatar render timeout armed: {int(timeout_sec)}s")
         return await asyncio.wait_for(coro, timeout=float(timeout_sec))
 
-    async def _predict_async(self, *, avatar_image: Path, audio: Path, sample_steps_override: int = 0) -> Path:
+    async def _predict_async(
+        self,
+        *,
+        avatar_image: Path,
+        audio: Path,
+        sample_steps_override: int = 0,
+        face_restore_override: float = -1.0,
+        stream_file_interpolation_override: str = "",
+        output_fps_override: int = 0,
+    ) -> Path:
         prediction_started_at = time.monotonic()
         _log("starting avatar render")
         os.chdir(str(RUNTIME_ROOT))
@@ -716,6 +861,12 @@ class Predictor(BasePredictor):
         _log(f"avatar render config resolved: sample_steps={sample_steps}")
         seed = int(os.environ.get("VLOGME_AVATAR_SEED", "420") or 420)
         face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.0") or 0.0)
+        try:
+            requested_face_restore = float(face_restore_override)
+        except Exception:
+            requested_face_restore = -1.0
+        if requested_face_restore >= 0.0:
+            face_restore = float(max(0.0, min(1.0, requested_face_restore)))
         background_restore = float(os.environ.get("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0") or 0.0)
         prompt = _default_prompt()
         negative_prompt = _default_negative_prompt()
@@ -741,6 +892,16 @@ class Predictor(BasePredictor):
         job_id = f"replicate_avatar_{int(time.time() * 1000)}"
         infer_frames = int(os.environ.get("INFER_FRAMES", "32") or 32)
         fps = int(os.environ.get("WORKER_FPS", "16") or 16)
+        stream_file_interpolation = str(
+            stream_file_interpolation_override
+            or os.environ.get("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "")
+            or ""
+        ).strip().lower()
+        if stream_file_interpolation in {"none", "off", "0", "false", "no"}:
+            stream_file_interpolation = ""
+        output_fps = int(output_fps_override or _env_int("VLOGME_AVATAR_OUTPUT_FPS", 0) or 0)
+        if output_fps <= 0:
+            output_fps = int(fps * 2) if stream_file_interpolation in {"rife", "torch-rife"} else int(fps)
         size = str(os.environ.get("SIZE", "704*384") or "704*384")
         num_clip = max(1, int(auto_num_clip_for_audio(str(audio_path), fps=int(fps), infer_frames=int(infer_frames))))
         final_path = run_root / "avatar.mp4"
@@ -766,9 +927,9 @@ class Predictor(BasePredictor):
             stream_file_output_path=str(final_path),
             stream_file_output_width=int(os.environ.get("VLOGME_AVATAR_OUTPUT_WIDTH", "720") or 720),
             stream_file_output_height=int(os.environ.get("VLOGME_AVATAR_OUTPUT_HEIGHT", "1280") or 1280),
-            stream_file_output_fps=float(fps),
+            stream_file_output_fps=float(output_fps),
             stream_file_trim_duration_sec=float(audio_duration_sec),
-            stream_file_interpolation=str(os.environ.get("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "") or ""),
+            stream_file_interpolation=str(stream_file_interpolation or ""),
         )
 
         _log(
@@ -778,8 +939,10 @@ class Predictor(BasePredictor):
             f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
             f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "
             f"size={size} output={req.stream_file_output_width}x{req.stream_file_output_height} "
-            f"fps={fps} audio={audio_duration_sec:.2f}s infer_frames={infer_frames} "
-            f"clips={num_clip} steps={sample_steps}"
+            f"fps={fps}->{output_fps} interpolation={stream_file_interpolation or 'off'} "
+            f"face_restore={face_restore:.2f} background_restore={background_restore:.2f} "
+            f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
+            f"audio={audio_duration_sec:.2f}s infer_frames={infer_frames} clips={num_clip} steps={sample_steps}"
         )
         infer_started_at = time.monotonic()
         resp = await ModelRuntimeClient().infer(req=req)

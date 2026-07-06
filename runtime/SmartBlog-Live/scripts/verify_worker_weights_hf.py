@@ -60,6 +60,11 @@ def main() -> int:
             "enhancers/detection_Resnet50_Final.pth",
             "enhancers/parsing_parsenet.pth",
         ),
+        "rife": (
+            (os.getenv("HF_RIFE_REPO_ID") or "TensorForger/RIFE-safetensors").strip(),
+            "flownet.safetensors",
+            "interpolation_model.py",
+        ),
     }
 
     ok = True
