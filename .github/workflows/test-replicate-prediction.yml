@@ -105,7 +105,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run smoke prediction
+      - name: Run Replicate prediction
         env:
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
