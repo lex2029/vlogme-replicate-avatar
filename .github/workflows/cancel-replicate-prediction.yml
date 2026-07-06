@@ -1,0 +1,52 @@
+name: Cancel Replicate Prediction
+
+on:
+  workflow_dispatch:
+    inputs:
+      prediction_id:
+        description: "Replicate prediction id to cancel"
+        required: true
+
+jobs:
+  cancel_prediction:
+    name: Cancel Replicate Prediction
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel prediction
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          PREDICTION_ID: ${{ inputs.prediction_id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          token = os.environ["REPLICATE_API_TOKEN"].strip()
+          prediction_id = os.environ["PREDICTION_ID"].strip()
+          if not prediction_id:
+              raise RuntimeError("Missing prediction id")
+
+          url = f"https://api.replicate.com/v1/predictions/{prediction_id}/cancel"
+          req = urllib.request.Request(
+              url,
+              data=b"",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/json",
+                  "User-Agent": "vlogme-replicate-avatar-cancel/1.0",
+              },
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  raw = response.read().decode("utf-8")
+          except urllib.error.HTTPError as exc:
+              raw = exc.read().decode("utf-8", errors="replace")
+              if exc.code in {404, 409, 422}:
+                  print(f"Cancel returned HTTP {exc.code}: {raw}")
+                  raise SystemExit(0)
+              raise RuntimeError(f"Cancel failed: HTTP {exc.code}: {raw}") from exc
+          print(json.dumps({"prediction_id": prediction_id, "cancel_response": json.loads(raw)}, indent=2))
+          PY
