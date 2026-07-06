@@ -227,7 +227,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_UPSCALE_X2", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "1")
     os.environ.setdefault("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384")
-    os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.75")
+    os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.0")
     os.environ.setdefault("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "torch-rife")
     os.environ.setdefault("VLOGME_AVATAR_STREAM_FILE_NVVFX", "1")
