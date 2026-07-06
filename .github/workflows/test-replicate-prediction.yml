@@ -32,7 +32,7 @@ on:
         required: false
         default: "0"
       gpu_layout:
-        description: "Optional cold-start GPU layout override: split, dit2, or single."
+        description: "Optional cold-start GPU layout override: dit2, passthrough, split, or single."
         required: false
         default: ""
       use_fp8:

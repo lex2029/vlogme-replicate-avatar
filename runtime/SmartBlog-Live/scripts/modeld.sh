@@ -79,6 +79,7 @@ done
 USE_MERGED_CKPT="${USE_MERGED_CKPT:-0}"
 MERGED_CKPT_DIR="${MERGED_CKPT_DIR:-}"
 MERGED_NOISE_MODEL_DIR="${MERGED_NOISE_MODEL_DIR:-$MERGED_CKPT_DIR}"
+OFFLOAD_MODEL_EFFECTIVE="${OFFLOAD_MODEL:-False}"
 USE_MERGED_CKPT_EFFECTIVE=0
 if is_true "$USE_MERGED_CKPT" || [[ -n "$MERGED_CKPT_DIR" ]]; then
   USE_MERGED_CKPT_EFFECTIVE=1
@@ -135,7 +136,7 @@ main_args=(
   --size "$SIZE"
   --base_seed "$BASE_SEED"
   --training_config "$TRAINING_CONFIG"
-  --offload_model False
+  --offload_model "$OFFLOAD_MODEL_EFFECTIVE"
   --convert_model_dtype
   --infer_frames "$INFER_FRAMES"
   --sample_steps "$WORKER_SAMPLE_STEPS"

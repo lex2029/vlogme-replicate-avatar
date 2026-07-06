@@ -66,6 +66,11 @@ def _gpu_runtime_values() -> dict[str, str]:
     layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
     if layout in {"auto", "a100", "a100_auto"}:
         layout = "dit2"
+    if layout in {"passthrough", "pass_through", "split_passthrough", "split_lowmem"}:
+        layout = "passthrough"
+        os.environ.setdefault("VLOGME_AVATAR_KV_CACHE_FRAMES", "16")
+        os.environ.setdefault("VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK", "4")
+        os.environ.setdefault("VLOGME_AVATAR_OFFLOAD_MODEL", "true")
     os.environ["VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE"] = str(layout)
     if layout in {"single", "1", "one"}:
         return {
@@ -75,7 +80,7 @@ def _gpu_runtime_values() -> dict[str, str]:
             "ULYSSES_SIZE": os.environ.get("VLOGME_AVATAR_ULYSSES_SIZE", "1"),
             "ENABLE_VAE_PARALLEL": "0",
         }
-    if layout in {"split", "split_vae", "dit1_vae1", "vae"}:
+    if layout in {"split", "split_vae", "dit1_vae1", "vae", "passthrough"}:
         return {
             "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0,1"),
             "TORCHRUN_NPROC": "2",
@@ -135,11 +140,15 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("SAMPLE_SOLVER", "euler")
     os.environ.setdefault("BASE_SEED", "420")
     os.environ.setdefault("TRAINING_CONFIG", "liveavatar/configs/s2v_causal_sft.yaml")
+    os.environ.setdefault("OFFLOAD_MODEL", os.environ.get("VLOGME_AVATAR_OFFLOAD_MODEL", "False"))
     os.environ.setdefault("SAVE_DIR", "./output/")
     os.environ.setdefault("SERVER_PORT", "7861")
     os.environ.setdefault("SERVER_NAME", "127.0.0.1")
     os.environ.setdefault("WORKER_LIVEAUDIO_MICRO_CHUNK_SCHEDULE_SAMPLES", "64000")
-    os.environ.setdefault("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8")
+    os.environ.setdefault(
+        "SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK",
+        os.environ.get("VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK", "8"),
+    )
     os.environ.setdefault("LIVE_AUDIO_STREAM_ASYNC_PRODUCER", "1")
     os.environ.setdefault("LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP", "1")
     os.environ.setdefault("LIVE_AUDIO_STREAM_REFILL_DURING_DENOISE", "0")
@@ -247,6 +256,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LORA_PATH_DMD": str(asset_root / "ckpt" / "LiveAvatar" / "liveavatar.safetensors"),
         "MERGED_NOISE_MODEL_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B-merged-liveavatar-prefp8-test"),
         "USE_MERGED_CKPT": os.environ.get("USE_MERGED_CKPT", "1"),
+        "OFFLOAD_MODEL": os.environ.get("OFFLOAD_MODEL", os.environ.get("VLOGME_AVATAR_OFFLOAD_MODEL", "False")),
         "SIZE": size,
         "SMARTBLOG_LIVE_PROFILE": live_profile,
         "SMARTBLOG_RENDER_VIDEO_PROFILE": live_profile,
@@ -283,6 +293,10 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast"),
         "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "19"),
         "SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS": os.environ.get("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4"),
+        "SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK": os.environ.get(
+            "VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK",
+            os.environ.get("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8"),
+        ),
         "LIVE_STREAM_KV_CACHE_FRAMES": os.environ.get("VLOGME_AVATAR_KV_CACHE_FRAMES", "32"),
         "LIVE_AUDIO_STREAM_ALLOW_LONG_CLIPS": "1",
         "LIVE_AUDIO_STREAM_MAX_CLIP_FRAMES": os.environ.get("VLOGME_AVATAR_MAX_CLIP_FRAMES", "32"),
@@ -381,7 +395,21 @@ class Predictor(BasePredictor):
         requested: dict[str, str] = {}
         layout = str(gpu_layout or "").strip().lower()
         if layout:
-            if layout not in {"auto", "a100", "a100_auto", "split", "split_vae", "dit1_vae1", "vae", "dit2", "single"}:
+            if layout not in {
+                "auto",
+                "a100",
+                "a100_auto",
+                "split",
+                "split_vae",
+                "dit1_vae1",
+                "vae",
+                "passthrough",
+                "pass_through",
+                "split_passthrough",
+                "split_lowmem",
+                "dit2",
+                "single",
+            }:
                 raise RuntimeError(f"Unsupported gpu_layout override: {layout}")
             requested["VLOGME_AVATAR_GPU_LAYOUT"] = layout
 
@@ -411,6 +439,11 @@ class Predictor(BasePredictor):
         os.environ["USE_FP8"] = os.environ.get("VLOGME_AVATAR_USE_FP8", "0")
         os.environ["LIVEAVATAR_FP8_QUANT_COMPILE"] = os.environ.get("VLOGME_AVATAR_FP8_QUANT_COMPILE", "0")
         os.environ["ENABLE_COMPILE"] = os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false")
+        os.environ["OFFLOAD_MODEL"] = os.environ.get("VLOGME_AVATAR_OFFLOAD_MODEL", "False")
+        os.environ["SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK"] = os.environ.get(
+            "VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK",
+            os.environ.get("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8"),
+        )
         _append_replicate_profile_overrides(
             self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
@@ -421,6 +454,9 @@ class Predictor(BasePredictor):
             f"cuda={os.environ.get('CUDA_VISIBLE_DEVICES', '')} "
             f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
             f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "
+            f"offload_model={os.environ.get('OFFLOAD_MODEL', '')} "
+            f"block_frames={os.environ.get('SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK', '')} "
+            f"kv_frames={os.environ.get('LIVE_STREAM_KV_CACHE_FRAMES', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
             f"fp8_quant_compile={os.environ.get('LIVEAVATAR_FP8_QUANT_COMPILE', '0')} "
             f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
