@@ -63,9 +63,9 @@ def _env_int(name: str, default: int = 0) -> int:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
     if layout in {"auto", "a100", "a100_auto"}:
-        layout = "split"
+        layout = "dit2"
     os.environ["VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE"] = str(layout)
     if layout in {"single", "1", "one"}:
         return {
