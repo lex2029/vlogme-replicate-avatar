@@ -33,6 +33,18 @@ required_asset_files=(
   "gfpgan/weights/parsing_parsenet.pth"
 )
 
+required_asset_min_bytes() {
+  case "$1" in
+    "ckpt/Wan2.2-S2V-14B/models_t5_umt5-xxl-enc-bf16.pth") printf '%s\n' 1000000000 ;;
+    "ckpt/Wan2.2-S2V-14B/Wan2.1_VAE.pth") printf '%s\n' 100000000 ;;
+    "ckpt/LiveAvatar/liveavatar.safetensors") printf '%s\n' 1000000 ;;
+    "worker_assets/enchenh2d/models/GFPGANv1.4.pth") printf '%s\n' 1000000 ;;
+    "gfpgan/weights/detection_Resnet50_Final.pth") printf '%s\n' 1000000 ;;
+    "gfpgan/weights/parsing_parsenet.pth") printf '%s\n' 1000000 ;;
+    *) printf '%s\n' 1 ;;
+  esac
+}
+
 python_bin() {
   if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
     printf '%s\n' "$ROOT_DIR/.venv/bin/python"
@@ -44,9 +56,17 @@ python_bin() {
 verify_asset_files() {
   local missing=()
   local rel
+  local min_bytes
+  local size
   for rel in "${required_asset_files[@]}"; do
-    if [[ ! -s "$ASSET_ROOT/$rel" ]]; then
-      missing+=("$rel")
+    min_bytes="$(required_asset_min_bytes "$rel")"
+    if [[ ! -f "$ASSET_ROOT/$rel" ]]; then
+      missing+=("$rel (missing)")
+      continue
+    fi
+    size="$(wc -c < "$ASSET_ROOT/$rel" | tr -d '[:space:]')"
+    if (( size < min_bytes )); then
+      missing+=("$rel (${size} bytes < ${min_bytes})")
     fi
   done
   if (( ${#missing[@]} > 0 )); then

@@ -87,6 +87,29 @@ download_tree() {
   [[ -f "$ASSET_ROOT/$required_rel" ]] || fail "$label download finished but required file missing: $required_rel"
 }
 
+required_file_min_bytes() {
+  case "$1" in
+    "ckpt/Wan2.2-S2V-14B/models_t5_umt5-xxl-enc-bf16.pth") printf '%s\n' 1000000000 ;;
+    "ckpt/Wan2.2-S2V-14B/Wan2.1_VAE.pth") printf '%s\n' 100000000 ;;
+    "ckpt/LiveAvatar/liveavatar.safetensors") printf '%s\n' 1000000 ;;
+    "worker_assets/enchenh2d/models/GFPGANv1.4.pth") printf '%s\n' 1000000 ;;
+    "gfpgan/weights/detection_Resnet50_Final.pth") printf '%s\n' 1000000 ;;
+    "gfpgan/weights/parsing_parsenet.pth") printf '%s\n' 1000000 ;;
+    *) printf '%s\n' 1 ;;
+  esac
+}
+
+verify_required_file() {
+  local label="$1"
+  local rel="$2"
+  local min_bytes
+  local size
+  min_bytes="$(required_file_min_bytes "$rel")"
+  [[ -f "$ASSET_ROOT/$rel" ]] || fail "$label required file missing: $rel"
+  size="$(wc -c < "$ASSET_ROOT/$rel" | tr -d '[:space:]')"
+  (( size >= min_bytes )) || fail "$label required file too small: $rel (${size} bytes < ${min_bytes})"
+}
+
 download_tree_if_missing_any() {
   local label="$1"
   local repo_id="$2"
@@ -97,10 +120,18 @@ download_tree_if_missing_any() {
   shift 6
 
   local rel
+  local min_bytes
+  local size
   if [[ "$FORCE_DOWNLOAD" != "1" ]]; then
     local missing=0
     for rel in "$@"; do
-      if [[ ! -s "$ASSET_ROOT/$rel" ]]; then
+      min_bytes="$(required_file_min_bytes "$rel")"
+      if [[ ! -f "$ASSET_ROOT/$rel" ]]; then
+        missing=1
+        break
+      fi
+      size="$(wc -c < "$ASSET_ROOT/$rel" | tr -d '[:space:]')"
+      if (( size < min_bytes )); then
         missing=1
         break
       fi
@@ -113,7 +144,7 @@ download_tree_if_missing_any() {
 
   FORCE_DOWNLOAD=1 download_tree "$label" "$repo_id" "$include_glob" "$remote_root" "$local_root" "$1" "$revision"
   for rel in "$@"; do
-    [[ -s "$ASSET_ROOT/$rel" ]] || fail "$label download finished but required file missing: $rel"
+    verify_required_file "$label" "$rel"
   done
 }
 
@@ -165,7 +196,7 @@ verify_required_files() {
   )
   local rel
   for rel in "${required_files[@]}"; do
-    [[ -f "$ASSET_ROOT/$rel" ]] || fail "required weight missing: $rel"
+    verify_required_file "worker weights" "$rel"
   done
 }
 
@@ -174,7 +205,8 @@ main() {
   ensure_hf_cli
   ensure_layout
 
-  export HF_TOKEN="${AVALIFE_HF_TOKEN:-${SMARTBLOG_HF_TOKEN:-}}"
+  export HF_TOKEN="${AVALIFE_HF_TOKEN:-${SMARTBLOG_HF_TOKEN:-${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}}}"
+  export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
   export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
   export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 
