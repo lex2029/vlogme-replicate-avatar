@@ -15,6 +15,14 @@ on:
         description: "Maximum time to wait for the prediction"
         required: true
         default: "5400"
+      max_processing_sec:
+        description: "Optional processing watchdog. 0 disables auto-cancel."
+        required: false
+        default: "0"
+      poll_sec:
+        description: "Polling interval in seconds"
+        required: false
+        default: "30"
       sample_steps:
         description: "Optional denoising steps override. Use 4 for smoke, 6+ for quality."
         required: false
@@ -43,5 +51,7 @@ jobs:
             --model "${{ inputs.model_name }}" \
             --deployment "${{ inputs.deployment }}" \
             --timeout-sec "${{ inputs.timeout_sec }}" \
+            --max-processing-sec "${{ inputs.max_processing_sec }}" \
+            --poll-sec "${{ inputs.poll_sec }}" \
             --sample-steps "${{ inputs.sample_steps }}" \
             --audio-seconds "${{ inputs.audio_seconds }}"

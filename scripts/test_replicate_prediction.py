@@ -92,6 +92,15 @@ def _tail_logs(prediction: dict, max_chars: int = 4000) -> str:
     return logs[-max_chars:]
 
 
+def _log_delta(current_logs: str, previous_logs: str, *, max_chars: int) -> str:
+    if not current_logs or current_logs == previous_logs:
+        return ""
+    if previous_logs and current_logs.startswith(previous_logs):
+        delta = current_logs[len(previous_logs) :]
+        return delta[-max_chars:]
+    return current_logs[-max_chars:]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a smoke prediction on the Replicate avatar model.")
     parser.add_argument("--model", default="lex2029/vlogme-avatar")
@@ -99,9 +108,11 @@ def main() -> int:
     parser.add_argument("--image", default="runtime/SmartBlog-Live/assets/ref_user_photo.jpg")
     parser.add_argument("--timeout-sec", type=int, default=5400)
     parser.add_argument("--poll-sec", type=int, default=30)
+    parser.add_argument("--max-processing-sec", type=int, default=0)
     parser.add_argument("--sample-steps", type=int, default=0)
     parser.add_argument("--audio-seconds", type=float, default=2.0)
     parser.add_argument("--log-tail-chars", type=int, default=20000)
+    parser.add_argument("--live-log-chars", type=int, default=6000)
     args = parser.parse_args()
 
     token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
@@ -149,15 +160,24 @@ def main() -> int:
         raise RuntimeError(f"Prediction create response is missing id/get URL: {prediction!r}")
     print(f"Prediction started: {prediction_id}")
 
-    deadline = time.time() + args.timeout_sec
+    started_at = time.time()
+    deadline = started_at + args.timeout_sec
     last_status = ""
+    last_logs = str(prediction.get("logs") or "")
     try:
         while time.time() < deadline:
             prediction = _request("GET", get_url, token=token)
             status = str(prediction.get("status") or "")
+            elapsed = time.time() - started_at
             if status != last_status:
-                print(f"Status: {status}")
+                print(f"Status: {status} after {elapsed:.0f}s")
                 last_status = status
+            logs = str(prediction.get("logs") or "")
+            delta = _log_delta(logs, last_logs, max_chars=max(1000, int(args.live_log_chars or 0)))
+            if delta:
+                print("Live log update:")
+                print(delta, end="" if delta.endswith("\n") else "\n")
+                last_logs = logs
             if status in {"succeeded", "failed", "canceled"}:
                 print(json.dumps(
                     {
@@ -175,6 +195,35 @@ def main() -> int:
                     print("Log tail:")
                     print(logs)
                 return 0 if status == "succeeded" else 1
+            if (
+                int(args.max_processing_sec or 0) > 0
+                and status in {"starting", "processing"}
+                and elapsed >= int(args.max_processing_sec)
+            ):
+                print(
+                    f"Prediction {prediction_id} exceeded max processing time "
+                    f"({elapsed:.0f}s >= {int(args.max_processing_sec)}s)",
+                    file=sys.stderr,
+                )
+                _try_cancel(str(cancel_url or ""), token=token, prediction_id=str(prediction_id))
+                time.sleep(min(10, max(1, int(args.poll_sec or 1))))
+                prediction = _request("GET", get_url, token=token)
+                print(json.dumps(
+                    {
+                        "id": prediction.get("id"),
+                        "status": prediction.get("status"),
+                        "output": prediction.get("output"),
+                        "error": prediction.get("error"),
+                        "metrics": prediction.get("metrics"),
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ))
+                logs = _tail_logs(prediction, max_chars=max(1000, int(args.log_tail_chars or 0)))
+                if logs:
+                    print("Log tail:")
+                    print(logs)
+                return 1
             time.sleep(args.poll_sec)
     except KeyboardInterrupt:
         _try_cancel(str(cancel_url or ""), token=token, prediction_id=str(prediction_id))
