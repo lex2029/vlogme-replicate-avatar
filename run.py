@@ -55,7 +55,7 @@ def _copy_input(src: Path, dst: SysPath) -> SysPath:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
     if layout in {"single", "1", "one"}:
         return {
             "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0"),
