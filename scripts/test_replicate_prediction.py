@@ -40,7 +40,7 @@ def _data_uri(path: Path, mime_type: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-def _make_smoke_audio(path: Path, *, seconds: float = 4.5, sample_rate: int = 16000) -> None:
+def _make_smoke_audio(path: Path, *, seconds: float = 2.0, sample_rate: int = 16000) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frames = int(seconds * sample_rate)
     with wave.open(str(path), "wb") as wav:

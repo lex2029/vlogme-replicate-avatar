@@ -55,7 +55,7 @@ def _copy_input(src: Path, dst: SysPath) -> SysPath:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
     if layout in {"single", "1", "one"}:
         return {
             "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0"),
@@ -109,7 +109,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("WORKER_TASK", "s2v-14B")
     os.environ.setdefault("WORKER_FPS", "16")
     os.environ.setdefault("INFER_FRAMES", "64")
-    os.environ.setdefault("WORKER_SAMPLE_STEPS", "8")
+    os.environ.setdefault("WORKER_SAMPLE_STEPS", os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "4"))
     os.environ.setdefault("WORKER_AUDIO_SAMPLE_RATE", "16000")
     os.environ.setdefault("GUIDE_SCALE", "4")
     os.environ.setdefault("SAMPLE_SOLVER", "euler")
@@ -173,7 +173,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         size = "832*448"
         live_profile = "highres_2x"
     else:
-        size = "720*400"
+        size = os.environ.get("VLOGME_AVATAR_SIZE", "640*360").strip() or "640*360"
         live_profile = "highres_1_5x"
     profile_values = {
         "WORKER_PROFILE_NAME": "replicate-avatar",
@@ -313,9 +313,9 @@ class Predictor(BasePredictor):
         size_profile = os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200"
         if size_profile not in {"b200", "b300"}:
             size_profile = "b200"
-        sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "8") or 8)
+        sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "4") or 4)
         seed = int(os.environ.get("VLOGME_AVATAR_SEED", "420") or 420)
-        face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.5") or 0.5)
+        face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.0") or 0.0)
         background_restore = float(os.environ.get("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0") or 0.0)
         prompt = _default_prompt()
         negative_prompt = _default_negative_prompt()
