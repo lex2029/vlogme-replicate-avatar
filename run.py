@@ -84,6 +84,7 @@ def _gpu_runtime_values() -> dict[str, str]:
 def _set_default_env(asset_root: SysPath) -> None:
     gpu_values = _gpu_runtime_values()
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     os.environ.setdefault("WORKER_BOOT_LOG", "1")
     os.environ.setdefault("WORKER_API_KEY", "replicate-local")
     os.environ.setdefault("SMARTBLOG_MOCK_CLAIM_FILE", "/tmp/vlogme-replicate-avatar-unused-claim.json")
@@ -182,6 +183,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "NUM_GPUS_DIT": gpu_values["NUM_GPUS_DIT"],
         "ULYSSES_SIZE": gpu_values["ULYSSES_SIZE"],
         "ENABLE_VAE_PARALLEL": gpu_values["ENABLE_VAE_PARALLEL"],
+        "PYTORCH_CUDA_ALLOC_CONF": os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"),
         "HF_HOME": str(asset_root / "hf"),
         "CKPT_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B"),
         "LORA_PATH_DMD": str(asset_root / "ckpt" / "LiveAvatar" / "liveavatar.safetensors"),
