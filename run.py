@@ -108,8 +108,8 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("MASTER_PORT", "29541")
     os.environ.setdefault("WORKER_TASK", "s2v-14B")
     os.environ.setdefault("WORKER_FPS", "16")
-    os.environ.setdefault("INFER_FRAMES", "64")
-    os.environ.setdefault("WORKER_SAMPLE_STEPS", os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "4"))
+    os.environ.setdefault("INFER_FRAMES", os.environ.get("VLOGME_AVATAR_INFER_FRAMES", "32"))
+    os.environ.setdefault("WORKER_SAMPLE_STEPS", os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "6"))
     os.environ.setdefault("WORKER_AUDIO_SAMPLE_RATE", "16000")
     os.environ.setdefault("GUIDE_SCALE", "4")
     os.environ.setdefault("SAMPLE_SOLVER", "euler")
@@ -173,8 +173,8 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         size = "832*448"
         live_profile = "highres_2x"
     else:
-        size = os.environ.get("VLOGME_AVATAR_SIZE", "384*256").strip() or "384*256"
-        live_profile = os.environ.get("VLOGME_AVATAR_LIVE_PROFILE", "base").strip() or "base"
+        size = os.environ.get("VLOGME_AVATAR_SIZE", "704*384").strip() or "704*384"
+        live_profile = os.environ.get("VLOGME_AVATAR_LIVE_PROFILE", "compact_704").strip() or "compact_704"
     profile_values = {
         "WORKER_PROFILE_NAME": "replicate-avatar",
         "WORKER_ASSET_ROOT": str(asset_root),
@@ -221,6 +221,19 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_RENDER_FINALIZE_BACKGROUND": "0",
         "SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND": "0",
         "SMARTBLOG_RENDER_BURN_IN_SUBTITLES": "0",
+        "LIVE_STREAM_KV_CACHE_FRAMES": os.environ.get("VLOGME_AVATAR_KV_CACHE_FRAMES", "32"),
+        "LIVE_AUDIO_STREAM_ALLOW_LONG_CLIPS": "1",
+        "LIVE_AUDIO_STREAM_MAX_CLIP_FRAMES": os.environ.get("VLOGME_AVATAR_MAX_CLIP_FRAMES", "32"),
+        "SMARTBLOG_RENDER_ONEPASS_MAX_CONDITIONING_FRAMES": os.environ.get(
+            "VLOGME_AVATAR_MAX_CONDITIONING_FRAMES", "32"
+        ),
+        "SMARTBLOG_RENDER_ONEPASS_MAX_AUDIO_CLIP_FRAMES": os.environ.get(
+            "VLOGME_AVATAR_MAX_AUDIO_CLIP_FRAMES", "32"
+        ),
+        "SMARTBLOG_RENDER_ONEPASS_MIN_TAIL_FRAMES": os.environ.get("VLOGME_AVATAR_MIN_TAIL_FRAMES", "32"),
+        "SMARTBLOG_RENDER_ONEPASS_BOUNDARY_PREROLL_FRAMES": os.environ.get(
+            "VLOGME_AVATAR_BOUNDARY_PREROLL_FRAMES", "8"
+        ),
         "LIVE_AUDIO_STREAM_ASYNC_PRODUCER": os.environ.get("LIVE_AUDIO_STREAM_ASYNC_PRODUCER", "1"),
         "LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP": os.environ.get(
             "LIVE_AUDIO_STREAM_ASYNC_START_AFTER_FIRST_CLIP", "1"
@@ -337,7 +350,7 @@ class Predictor(BasePredictor):
         size_profile = os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200"
         if size_profile not in {"b200", "b300"}:
             size_profile = "b200"
-        sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "4") or 4)
+        sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "6") or 6)
         seed = int(os.environ.get("VLOGME_AVATAR_SEED", "420") or 420)
         face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.0") or 0.0)
         background_restore = float(os.environ.get("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0") or 0.0)
@@ -377,7 +390,7 @@ class Predictor(BasePredictor):
         video_config: dict[str, Any] = {
             "mode": "avatar",
             "orientation": "portrait",
-            "render_size": os.environ.get("SIZE", "384*256"),
+            "render_size": os.environ.get("SIZE", "704*384"),
             "video_size": {"width": 720, "height": 1280},
             "num_inference_steps": int(sample_steps),
             "seed": int(seed),
@@ -401,7 +414,7 @@ class Predictor(BasePredictor):
             },
             "assets": {
                 "orientation": "portrait",
-                "render_size": os.environ.get("SIZE", "384*256"),
+                "render_size": os.environ.get("SIZE", "704*384"),
                 "video_size": {"width": 720, "height": 1280},
                 "avatar_url": _file_uri(avatar_path),
                 "audio_chunks": [
