@@ -170,7 +170,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("SMARTBLOG_RENDER_AVATAR_LIVEAUDIO_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_TRIM_TRAILING_SILENCE", "1")
     os.environ.setdefault("USE_FP8", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
-    os.environ.setdefault("LIVEAVATAR_FP8_QUANT_COMPILE", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
+    os.environ.setdefault("LIVEAVATAR_FP8_QUANT_COMPILE", os.environ.get("VLOGME_AVATAR_FP8_QUANT_COMPILE", "0"))
     os.environ.setdefault("ENABLE_COMPILE", os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"))
     os.environ.setdefault("TORCH_COMPILE_DYNAMIC", os.environ.get("VLOGME_AVATAR_TORCH_COMPILE_DYNAMIC", "0"))
     os.environ.setdefault("TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS", "1")
@@ -320,7 +320,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "POST_VAE_TIMING_LOG": os.environ.get("POST_VAE_TIMING_LOG", "1"),
         "LIVE_AUDIO_TPP_TIMING_LOG": os.environ.get("LIVE_AUDIO_TPP_TIMING_LOG", "1"),
         "USE_FP8": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
-        "LIVEAVATAR_FP8_QUANT_COMPILE": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
+        "LIVEAVATAR_FP8_QUANT_COMPILE": os.environ.get("VLOGME_AVATAR_FP8_QUANT_COMPILE", "0"),
         "ENABLE_COMPILE": os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"),
         "TORCH_COMPILE_DYNAMIC": os.environ.get("TORCH_COMPILE_DYNAMIC", "0"),
         "TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS": os.environ.get("TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS", "1"),
@@ -409,7 +409,7 @@ class Predictor(BasePredictor):
         for key, value in gpu_values.items():
             os.environ[key] = value
         os.environ["USE_FP8"] = os.environ.get("VLOGME_AVATAR_USE_FP8", "0")
-        os.environ["LIVEAVATAR_FP8_QUANT_COMPILE"] = os.environ.get("VLOGME_AVATAR_USE_FP8", "0")
+        os.environ["LIVEAVATAR_FP8_QUANT_COMPILE"] = os.environ.get("VLOGME_AVATAR_FP8_QUANT_COMPILE", "0")
         os.environ["ENABLE_COMPILE"] = os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false")
         _append_replicate_profile_overrides(
             self.asset_root,
@@ -422,6 +422,7 @@ class Predictor(BasePredictor):
             f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
             f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
+            f"fp8_quant_compile={os.environ.get('LIVEAVATAR_FP8_QUANT_COMPILE', '0')} "
             f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
         )
 
