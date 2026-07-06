@@ -16,16 +16,16 @@ speech audio file and return a generated avatar MP4.
   so a fresh container will verify local weights and then try to download missing
   assets.
 - The default runtime profile targets Replicate `gpu-a100-large-2x`:
-  `VLOGME_AVATAR_GPU_LAYOUT=dit2`, using both A100 cards for distributed
-  DiT/denoise. The default first-pass Replicate canvas is portrait `704*384`
-  (Wan/model order is height*width), with 32-frame inference windows, 6
+  `VLOGME_AVATAR_GPU_LAYOUT=split`, using one A100 for DiT/denoise and the
+  second A100 for VAE/decode/postprocessing. The default first-pass Replicate
+  canvas is portrait `704*384` (Wan/model order is height*width), with 32-frame
+  inference windows, 6
   inference steps, and face restore disabled. The public `predict()` input also
   accepts `sample_steps`; use `4` for smoke tests and `6+` for quality checks.
   Tune `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
   `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. Set
-  `VLOGME_AVATAR_GPU_LAYOUT=split` to put
-  DiT/denoise on one A100 and VAE/decode/postprocessing on the second, or
-  `single` for one-GPU debugging.
+  `VLOGME_AVATAR_GPU_LAYOUT=dit2` to use both A100 cards for distributed
+  DiT/denoise, or `single` for one-GPU debugging.
 - Secrets are not needed for the first audio-driven avatar test.
 
 ## First Local Test
@@ -61,8 +61,10 @@ rolling updates are controlled outside the VlogMe app.
 ## Runtime Notes
 
 The wrapper starts the LiveAvatar model runtime once in `setup()` and keeps it
-warm for subsequent `predict()` calls. `predict()` routes through the existing
-avatar-only render path but bypasses VlogMe job polling and Supabase upload.
+warm for subsequent `predict()` calls. `predict()` now calls the model runtime
+directly with a single `InferRequest` and direct stream-file MP4 output. It does
+not create a SmartBlog render job, claim, mock state, VlogMe job poll, Supabase
+upload, Hunyuan, MMAudio, or remote edge handoff.
 
 The output is returned to Replicate as a local file. VlogMe should upload/store
 the result from its own backend after receiving the Replicate prediction output.

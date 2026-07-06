@@ -6,10 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.parse
-from argparse import Namespace
 from pathlib import Path as SysPath
-from typing import Any
 
 from cog import BasePredictor, Input, Path, Secret
 
@@ -44,10 +41,6 @@ def _runtime_log_tail(max_chars: int = 12000) -> str:
     return "".join(chunks)[-max_chars:]
 
 
-def _file_uri(path: SysPath) -> str:
-    return "file://" + urllib.parse.quote(str(path.resolve()))
-
-
 def _copy_input(src: Path, dst: SysPath) -> SysPath:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(str(src), str(dst))
@@ -55,7 +48,7 @@ def _copy_input(src: Path, dst: SysPath) -> SysPath:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "dit2").strip().lower() or "dit2"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
     if layout in {"single", "1", "one"}:
         return {
             "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0"),
@@ -111,6 +104,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("INFER_FRAMES", os.environ.get("VLOGME_AVATAR_INFER_FRAMES", "32"))
     os.environ.setdefault("WORKER_SAMPLE_STEPS", os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "6"))
     os.environ.setdefault("WORKER_AUDIO_SAMPLE_RATE", "16000")
+    os.environ.setdefault("WORKER_AUDIO_NUM_CLIP_PAD_SEC", "0")
     os.environ.setdefault("GUIDE_SCALE", "4")
     os.environ.setdefault("SAMPLE_SOLVER", "euler")
     os.environ.setdefault("BASE_SEED", "420")
@@ -145,6 +139,9 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("USE_FP8", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
     os.environ.setdefault("LIVEAVATAR_FP8_QUANT_COMPILE", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
     os.environ.setdefault("ENABLE_COMPILE", os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"))
+    os.environ.setdefault("MODEL_TIMING_LOG", "1")
+    os.environ.setdefault("POST_VAE_TIMING_LOG", "1")
+    os.environ.setdefault("LIVE_AUDIO_TPP_TIMING_LOG", "1")
 
 
 def _default_prompt() -> str:
@@ -249,6 +246,10 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_AUDIO_STREAM_FILL_NOISE_STD": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_STD", "0.0003"),
         "LIVE_AUDIO_STREAM_FILL_NOISE_SEED": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_SEED", "420"),
         "LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH": os.environ.get("LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH", "1"),
+        "WORKER_AUDIO_NUM_CLIP_PAD_SEC": os.environ.get("WORKER_AUDIO_NUM_CLIP_PAD_SEC", "0"),
+        "MODEL_TIMING_LOG": os.environ.get("MODEL_TIMING_LOG", "1"),
+        "POST_VAE_TIMING_LOG": os.environ.get("POST_VAE_TIMING_LOG", "1"),
+        "LIVE_AUDIO_TPP_TIMING_LOG": os.environ.get("LIVE_AUDIO_TPP_TIMING_LOG", "1"),
         "USE_FP8": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "LIVEAVATAR_FP8_QUANT_COMPILE": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "ENABLE_COMPILE": os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"),
@@ -353,9 +354,6 @@ class Predictor(BasePredictor):
         os.chdir(str(RUNTIME_ROOT))
         sys.path.insert(0, str(RUNTIME_ROOT))
 
-        size_profile = os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200"
-        if size_profile not in {"b200", "b300"}:
-            size_profile = "b200"
         sample_steps = int(os.environ.get("VLOGME_AVATAR_SAMPLE_STEPS", "6") or 6)
         if int(sample_steps_override or 0) > 0:
             sample_steps = int(sample_steps_override)
@@ -366,97 +364,82 @@ class Predictor(BasePredictor):
         prompt = _default_prompt()
         negative_prompt = _default_negative_prompt()
 
-        _append_replicate_profile_overrides(
-            SysPath(os.environ.get("VLOGME_AVATAR_ASSET_ROOT", str(ROOT / "weights"))).resolve(),
-            size_profile=str(size_profile),
-        )
         os.environ["WORKER_SAMPLE_STEPS"] = str(int(sample_steps))
         os.environ["BASE_SEED"] = str(int(seed))
 
-        from avalife.worker.smartblog_api import LocalSmartBlogMockClient
-        from avalife.worker.smartblog_render import SmartBlogRenderOnlyWorker
-
-        class ReplicateAvatarWorker(SmartBlogRenderOnlyWorker):
-            async def _smartblog_download_file(self, *, url: str, out_path: str) -> str:
-                raw = str(url or "").strip()
-                if raw.startswith("file://"):
-                    src = SysPath(urllib.parse.unquote(raw[len("file://") :]))
-                elif raw and "://" not in raw and SysPath(raw).exists():
-                    src = SysPath(raw)
-                else:
-                    return await super()._smartblog_download_file(url=url, out_path=out_path)
-                dst = SysPath(out_path).resolve()
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(str(src), str(dst))
-                return str(dst)
+        from avalife.core.audio import auto_num_clip_for_audio, to_wav_16k_mono, wav_duration_seconds
+        from avalife.model.protocol import InferRequest
+        from avalife.worker.model_client import ModelRuntimeClient
 
         run_root = ROOT / "tmp" / f"run-{int(time.time() * 1000)}"
         input_dir = run_root / "inputs"
         avatar_path = _copy_input(avatar_image, input_dir / "avatar.png")
-        audio_path = _copy_input(audio, input_dir / "speech.input")
+        raw_audio_path = _copy_input(audio, input_dir / "speech.input")
+        audio_path = input_dir / "speech.wav"
+        to_wav_16k_mono(str(raw_audio_path), str(audio_path))
+        audio_duration_sec = float(wav_duration_seconds(str(audio_path)))
+        if audio_duration_sec <= 0.0:
+            raise RuntimeError("Input audio is empty or could not be decoded")
 
         job_id = f"replicate_avatar_{int(time.time() * 1000)}"
-        video_config: dict[str, Any] = {
-            "mode": "avatar",
-            "orientation": "portrait",
-            "render_size": os.environ.get("SIZE", "704*384"),
-            "video_size": {"width": 720, "height": 1280},
-            "num_inference_steps": int(sample_steps),
-            "seed": int(seed),
-            "prompt": str(prompt or ""),
-            "negative_prompt": str(negative_prompt or ""),
-        }
-
-        claim: dict[str, Any] = {
-            "job": {
-                "id": job_id,
-                "job_type": "render_video",
-                "payload_json": {
-                    "avatar_url": _file_uri(avatar_path),
-                    "audio_url": _file_uri(audio_path),
-                    "video": video_config,
-                    "filters": {
-                        "face_restore": float(face_restore),
-                        "background_restore": float(background_restore),
-                    },
-                },
-            },
-            "assets": {
-                "orientation": "portrait",
-                "render_size": os.environ.get("SIZE", "704*384"),
-                "video_size": {"width": 720, "height": 1280},
-                "avatar_url": _file_uri(avatar_path),
-                "audio_chunks": [
-                    {
-                        "url": _file_uri(audio_path),
-                        "local_path": str(audio_path),
-                        "index": 0,
-                        "text": "",
-                        "video_prompt": str(prompt or ""),
-                        "negative_prompt": str(negative_prompt or ""),
-                    }
-                ],
-            },
-            "upload": {},
-        }
-
-        worker = ReplicateAvatarWorker(args=Namespace(sample_guide_scale=0.0, sample_solver="euler"))
-        worker._smartblog_api = LocalSmartBlogMockClient(
-            os.environ["SMARTBLOG_MOCK_CLAIM_FILE"],
-            state_dir=str(run_root / "mock-state"),
-        )
-        try:
-            render_started_at = time.monotonic()
-            plan = await worker._smartblog_render_video_job(claim)
-            _log(f"avatar render job finished in {time.monotonic() - render_started_at:.1f}s")
-        finally:
-            await worker.aclose()
-
-        output_path = SysPath(str(getattr(plan, "file_path", "") or ""))
-        if not output_path.exists():
-            raise RuntimeError("Avatar render finished without a local MP4 output")
-
+        infer_frames = int(os.environ.get("INFER_FRAMES", "32") or 32)
+        fps = int(os.environ.get("WORKER_FPS", "16") or 16)
+        size = str(os.environ.get("SIZE", "704*384") or "704*384")
+        num_clip = max(1, int(auto_num_clip_for_audio(str(audio_path), fps=int(fps), infer_frames=int(infer_frames))))
         final_path = run_root / "avatar.mp4"
-        shutil.copyfile(str(output_path), str(final_path))
+        req = InferRequest(
+            prompt=str(prompt or ""),
+            image_path=str(avatar_path),
+            audio_path=str(audio_path),
+            num_clip=int(num_clip),
+            sample_steps=int(sample_steps),
+            sample_guide_scale=float(os.environ.get("GUIDE_SCALE", "4") or 4),
+            infer_frames=int(infer_frames),
+            size=str(size),
+            base_seed=int(seed),
+            sample_solver=str(os.environ.get("SAMPLE_SOLVER", "euler") or "euler"),
+            face_restore=float(face_restore),
+            background_restore=float(background_restore),
+            job_id=str(job_id),
+            enable_live_hls=False,
+            live_raw_dir=None,
+            save_live_raw_mp4=False,
+            video_prompt=str(prompt or ""),
+            negative_prompt=str(negative_prompt or ""),
+            stream_file_output_path=str(final_path),
+            stream_file_output_width=int(os.environ.get("VLOGME_AVATAR_OUTPUT_WIDTH", "720") or 720),
+            stream_file_output_height=int(os.environ.get("VLOGME_AVATAR_OUTPUT_HEIGHT", "1280") or 1280),
+            stream_file_output_fps=float(fps),
+            stream_file_trim_duration_sec=float(audio_duration_sec),
+            stream_file_interpolation=str(os.environ.get("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "") or ""),
+        )
+
+        _log(
+            "direct avatar infer: "
+            f"layout={os.environ.get('VLOGME_AVATAR_GPU_LAYOUT', 'split') or 'split'} "
+            f"cuda={os.environ.get('CUDA_VISIBLE_DEVICES', '')} "
+            f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
+            f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "
+            f"size={size} output={req.stream_file_output_width}x{req.stream_file_output_height} "
+            f"fps={fps} audio={audio_duration_sec:.2f}s infer_frames={infer_frames} "
+            f"clips={num_clip} steps={sample_steps}"
+        )
+        infer_started_at = time.monotonic()
+        resp = await ModelRuntimeClient().infer(req=req)
+        _log(
+            "model infer returned: "
+            f"ok={1 if resp.ok else 0} lock_wait={resp.lock_wait_s:.1f}s "
+            f"run_single={resp.run_single_s:.1f}s total={resp.total_s:.1f}s "
+            f"wall={time.monotonic() - infer_started_at:.1f}s"
+        )
+        if not resp.ok:
+            raise RuntimeError(resp.error or "Avatar inference failed")
+
+        output_path = SysPath(str(resp.video_path or final_path))
+        if not output_path.exists() or output_path.stat().st_size <= 0:
+            raise RuntimeError(f"Avatar inference finished without a local MP4 output: {output_path}")
+
+        if output_path.resolve() != final_path.resolve():
+            shutil.copyfile(str(output_path), str(final_path))
         _log(f"prediction finished in {time.monotonic() - prediction_started_at:.1f}s")
         return Path(str(final_path))
