@@ -106,6 +106,7 @@ def main() -> int:
     parser.add_argument("--model", default="lex2029/vlogme-avatar")
     parser.add_argument("--deployment", default="")
     parser.add_argument("--image", default="runtime/SmartBlog-Live/assets/ref_user_photo.jpg")
+    parser.add_argument("--audio", default="")
     parser.add_argument("--timeout-sec", type=int, default=5400)
     parser.add_argument("--poll-sec", type=int, default=30)
     parser.add_argument("--max-processing-sec", type=int, default=0)
@@ -130,10 +131,14 @@ def main() -> int:
 
     root = Path(__file__).resolve().parents[1]
     image_path = (root / args.image).resolve()
-    audio_path = root / "tmp" / "replicate-smoke-speech.wav"
+    audio_path = (root / args.audio).resolve() if str(args.audio or "").strip() else root / "tmp" / "replicate-smoke-speech.wav"
     if not image_path.exists():
         raise RuntimeError(f"Missing smoke image: {image_path}")
-    _make_smoke_audio(audio_path, seconds=float(args.audio_seconds))
+    if str(args.audio or "").strip():
+        if not audio_path.exists():
+            raise RuntimeError(f"Missing smoke audio: {audio_path}")
+    else:
+        _make_smoke_audio(audio_path, seconds=float(args.audio_seconds))
 
     payload = {
         "input": {

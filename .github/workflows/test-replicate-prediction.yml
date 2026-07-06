@@ -11,6 +11,14 @@ on:
         description: 'Optional deployment, for example "lex2029/vlogme-avatar-a100-2x"'
         required: false
         default: "lex2029/vlogme-avatar-a100-2x"
+      image:
+        description: "Repo-relative avatar image path"
+        required: false
+        default: "runtime/SmartBlog-Live/assets/ref_user_photo.jpg"
+      audio:
+        description: "Optional repo-relative WAV path. Empty generates smoke tone audio."
+        required: false
+        default: ""
       timeout_sec:
         description: "Maximum time to wait for the prediction"
         required: true
@@ -86,6 +94,8 @@ jobs:
           python3 scripts/test_replicate_prediction.py \
             --model "${{ inputs.model_name }}" \
             --deployment "${{ inputs.deployment }}" \
+            --image "${{ inputs.image }}" \
+            --audio "${{ inputs.audio }}" \
             --timeout-sec "${{ inputs.timeout_sec }}" \
             --max-processing-sec "${{ inputs.max_processing_sec }}" \
             --poll-sec "${{ inputs.poll_sec }}" \
