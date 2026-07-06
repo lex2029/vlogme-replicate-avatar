@@ -163,6 +163,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_STREAM_UPDATE_REF_LATENTS", "0")
     os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1")
     os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "1")
     os.environ.setdefault("LIVE_STREAM_MOTION_LATENTS_SYNC", "1")
 
     # Replicate should return a local MP4. No VlogMe upload, no remote RTX edge.
@@ -328,6 +329,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_STREAM_UPDATE_REF_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_REF_LATENTS", "0"),
         "LIVE_STREAM_UPDATE_MOTION_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1"),
         "LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded"),
+        "LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "1"),
         "LIVE_STREAM_MOTION_LATENTS_SYNC": os.environ.get("LIVE_STREAM_MOTION_LATENTS_SYNC", "1"),
         "WORKER_AUDIO_NUM_CLIP_PAD_SEC": os.environ.get("WORKER_AUDIO_NUM_CLIP_PAD_SEC", "0"),
         "MODEL_TIMING_LOG": os.environ.get("MODEL_TIMING_LOG", "1"),
@@ -391,6 +393,9 @@ class Predictor(BasePredictor):
         gpu_layout: str = "",
         use_fp8: int = -1,
         enable_compile: int = -1,
+        kv_cache_frames: int = 0,
+        wan_block_frames: int = 0,
+        infer_frames: int = 0,
     ) -> None:
         requested: dict[str, str] = {}
         layout = str(gpu_layout or "").strip().lower()
@@ -427,6 +432,27 @@ class Predictor(BasePredictor):
         if compile_override in {0, 1}:
             requested["VLOGME_AVATAR_ENABLE_COMPILE"] = "true" if compile_override == 1 else "false"
 
+        try:
+            kv_override = int(kv_cache_frames)
+        except Exception:
+            kv_override = 0
+        if kv_override > 0:
+            requested["VLOGME_AVATAR_KV_CACHE_FRAMES"] = str(max(4, min(512, int(kv_override))))
+
+        try:
+            block_override = int(wan_block_frames)
+        except Exception:
+            block_override = 0
+        if block_override > 0:
+            requested["VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK"] = str(max(1, min(32, int(block_override))))
+
+        try:
+            infer_override = int(infer_frames)
+        except Exception:
+            infer_override = 0
+        if infer_override > 0:
+            requested["VLOGME_AVATAR_INFER_FRAMES"] = str(max(4, min(512, int(infer_override))))
+
         if not requested:
             return
         if self.runtime_ready:
@@ -444,6 +470,14 @@ class Predictor(BasePredictor):
             "VLOGME_AVATAR_WAN_NUM_FRAMES_PER_BLOCK",
             os.environ.get("SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK", "8"),
         )
+        os.environ["LIVE_STREAM_KV_CACHE_FRAMES"] = os.environ.get(
+            "VLOGME_AVATAR_KV_CACHE_FRAMES",
+            os.environ.get("LIVE_STREAM_KV_CACHE_FRAMES", "32"),
+        )
+        os.environ["INFER_FRAMES"] = os.environ.get(
+            "VLOGME_AVATAR_INFER_FRAMES",
+            os.environ.get("INFER_FRAMES", "32"),
+        )
         _append_replicate_profile_overrides(
             self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
@@ -457,6 +491,8 @@ class Predictor(BasePredictor):
             f"offload_model={os.environ.get('OFFLOAD_MODEL', '')} "
             f"block_frames={os.environ.get('SMARTBLOG_WAN_NUM_FRAMES_PER_BLOCK', '')} "
             f"kv_frames={os.environ.get('LIVE_STREAM_KV_CACHE_FRAMES', '')} "
+            f"infer_frames={os.environ.get('INFER_FRAMES', '')} "
+            f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
             f"fp8_quant_compile={os.environ.get('LIVEAVATAR_FP8_QUANT_COMPILE', '0')} "
             f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
@@ -529,6 +565,18 @@ class Predictor(BasePredictor):
             description="Optional cold-start torch.compile override: -1 default, 0 disabled, 1 enabled.",
             default=-1,
         ),
+        kv_cache_frames: int = Input(
+            description="Optional cold-start KV history window in output frames. 0 keeps the deployment default.",
+            default=0,
+        ),
+        wan_block_frames: int = Input(
+            description="Optional cold-start Wan latent frames per denoise block. 0 keeps the deployment default.",
+            default=0,
+        ),
+        infer_frames: int = Input(
+            description="Optional cold-start generated frames per clip. 0 keeps the deployment default.",
+            default=0,
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -546,6 +594,9 @@ class Predictor(BasePredictor):
             gpu_layout=gpu_layout,
             use_fp8=use_fp8,
             enable_compile=enable_compile,
+            kv_cache_frames=kv_cache_frames,
+            wan_block_frames=wan_block_frames,
+            infer_frames=infer_frames,
         )
         stack_watchdog_sec = _env_int("VLOGME_AVATAR_STACK_WATCHDOG_SEC", 180)
         if int(stack_watchdog_sec) > 0:

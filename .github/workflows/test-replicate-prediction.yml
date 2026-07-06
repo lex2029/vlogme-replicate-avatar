@@ -43,6 +43,18 @@ on:
         description: "Optional cold-start compile override: -1 default, 0 off, 1 on."
         required: false
         default: "-1"
+      kv_cache_frames:
+        description: "Optional cold-start KV history window in output frames. 0 keeps default."
+        required: false
+        default: "0"
+      wan_block_frames:
+        description: "Optional cold-start Wan latent frames per denoise block. 0 keeps default."
+        required: false
+        default: "0"
+      infer_frames:
+        description: "Optional cold-start generated frames per clip. 0 keeps default."
+        required: false
+        default: "0"
       audio_seconds:
         description: "Generated smoke audio duration in seconds"
         required: false
@@ -74,4 +86,7 @@ jobs:
             --gpu-layout "${{ inputs.gpu_layout }}" \
             --use-fp8 "${{ inputs.use_fp8 }}" \
             --enable-compile "${{ inputs.enable_compile }}" \
+            --kv-cache-frames "${{ inputs.kv_cache_frames }}" \
+            --wan-block-frames "${{ inputs.wan_block_frames }}" \
+            --infer-frames "${{ inputs.infer_frames }}" \
             --audio-seconds "${{ inputs.audio_seconds }}"

@@ -5742,9 +5742,19 @@ class WanS2V:
                 stream_motion_latents_update_mode = "decoded"
             else:
                 stream_motion_latents_update_mode = "latent"
+            stream_file_motion_update = (
+                str(os.getenv("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "0") or "0").strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
+            stateful_motion_latents = bool(
+                stream_update_motion_latents
+                and (
+                    bool(stream_audio_mode)
+                    or (bool(stream_file_enabled) and bool(stream_file_motion_update))
+                )
+            )
             stream_update_motion_from_decoded = bool(
-                stream_audio_mode
-                and bool(stream_update_motion_latents)
+                stateful_motion_latents
                 and stream_motion_latents_update_mode == "decoded"
             )
             stream_motion_latents_sync = (
@@ -5763,7 +5773,8 @@ class WanS2V:
                     f"steps={sampling_steps}, size={HEIGHT}x{WIDTH}, num_gpus_dit={num_gpus_dit}, "
                     f"vae_parallel={enable_vae_parallel} stream_mode={1 if stream_audio_mode else 0} "
                     f"ref_update={1 if stream_update_ref_latents else 0} "
-                    f"motion_update={str(stream_motion_latents_update_mode)}",
+                    f"motion_update={str(stream_motion_latents_update_mode)} "
+                    f"motion_state={1 if stateful_motion_latents else 0}",
                     flush=True,
                 )
             profile_loop_t0 = time.perf_counter()
@@ -6063,8 +6074,7 @@ class WanS2V:
                             flush=True,
                         )
                 if (
-                    bool(stream_audio_mode)
-                    and bool(stream_update_motion_latents)
+                    bool(stateful_motion_latents)
                     and bool(stream_motion_latents_sync)
                     and int(r) > 0
                     and int(active_nr) != 1
@@ -7190,8 +7200,7 @@ class WanS2V:
                                 image_cpu = image_cpu[:, :, : int(max(0, int(block_visible_frames)))].contiguous()
                             out.append(image_cpu)
                         if (
-                            bool(stream_audio_mode)
-                            and bool(stream_update_motion_latents)
+                            bool(stateful_motion_latents)
                             and int(rank) == int(decode_rank)
                             and not bool(stream_clip_is_silence)
                             and int(block_visible_frames) > 0

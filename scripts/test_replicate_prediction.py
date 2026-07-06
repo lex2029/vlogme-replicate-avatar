@@ -114,6 +114,9 @@ def main() -> int:
     parser.add_argument("--gpu-layout", default="")
     parser.add_argument("--use-fp8", type=int, default=-1)
     parser.add_argument("--enable-compile", type=int, default=-1)
+    parser.add_argument("--kv-cache-frames", type=int, default=0)
+    parser.add_argument("--wan-block-frames", type=int, default=0)
+    parser.add_argument("--infer-frames", type=int, default=0)
     parser.add_argument("--audio-seconds", type=float, default=2.0)
     parser.add_argument("--log-tail-chars", type=int, default=20000)
     parser.add_argument("--live-log-chars", type=int, default=6000)
@@ -146,6 +149,12 @@ def main() -> int:
         payload["input"]["use_fp8"] = int(args.use_fp8)
     if int(args.enable_compile) in {0, 1}:
         payload["input"]["enable_compile"] = int(args.enable_compile)
+    if int(args.kv_cache_frames or 0) > 0:
+        payload["input"]["kv_cache_frames"] = int(args.kv_cache_frames)
+    if int(args.wan_block_frames or 0) > 0:
+        payload["input"]["wan_block_frames"] = int(args.wan_block_frames)
+    if int(args.infer_frames or 0) > 0:
+        payload["input"]["infer_frames"] = int(args.infer_frames)
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         payload["input"]["hf_token"] = hf_token
