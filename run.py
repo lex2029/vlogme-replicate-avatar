@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import faulthandler
+import json
 import os
 import shutil
 import subprocess
@@ -40,6 +41,35 @@ def _runtime_log_tail(max_chars: int = 12000) -> str:
         chunks.append(chunk)
         remaining -= len(chunk)
     return "".join(chunks)[-max_chars:]
+
+
+def _log_stream_file_progress(output_path: SysPath) -> None:
+    candidates = [
+        SysPath(str(output_path) + ".progress.json"),
+        output_path.with_suffix(output_path.suffix + ".progress.json"),
+    ]
+    progress_path = next((path for path in candidates if path.exists()), None)
+    if progress_path is None:
+        return
+    try:
+        progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _log(f"stream-file progress unreadable: {exc}")
+        return
+    _log(
+        "stream-file final: "
+        f"phase={progress.get('phase', '')} "
+        f"frames={progress.get('frames_in', 0)}->{progress.get('frames_out', 0)} "
+        f"blocks={progress.get('blocks', 0)} "
+        f"rife={float(progress.get('rife_sec') or 0.0):.3f}s "
+        f"nvvfx_enabled={1 if bool(progress.get('nvvfx_enabled')) else 0} "
+        f"nvvfx_failed={1 if bool(progress.get('nvvfx_failed')) else 0} "
+        f"nvvfx={float(progress.get('nvvfx_sec') or 0.0):.3f}s "
+        f"nvvfx_load={float(progress.get('nvvfx_load_sec') or 0.0):.3f}s "
+        f"resize={float(progress.get('resize_sec') or 0.0):.3f}s "
+        f"pack={float(progress.get('pack_sec') or 0.0):.3f}s "
+        f"write={float(progress.get('write_sec') or 0.0):.3f}s"
+    )
 
 
 def _copy_input(src: Path, dst: SysPath) -> SysPath:
@@ -959,7 +989,9 @@ class Predictor(BasePredictor):
         if not output_path.exists() or output_path.stat().st_size <= 0:
             raise RuntimeError(f"Avatar inference finished without a local MP4 output: {output_path}")
 
+        _log_stream_file_progress(output_path)
         if output_path.resolve() != final_path.resolve():
             shutil.copyfile(str(output_path), str(final_path))
+            _log_stream_file_progress(final_path)
         _log(f"prediction finished in {time.monotonic() - prediction_started_at:.1f}s")
         return Path(str(final_path))
