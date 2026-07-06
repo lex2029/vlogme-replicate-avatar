@@ -39,11 +39,15 @@ visual prompt automatically inside the model wrapper.
 Advanced runtime choices stay environment-driven for now:
 
 - `VLOGME_AVATAR_SIZE_PROFILE=b200|b300`
-- `VLOGME_AVATAR_GPU_LAYOUT=dit2|split_vae|single`
+- `VLOGME_AVATAR_GPU_LAYOUT=split|dit2|single`
 - `VLOGME_AVATAR_SAMPLE_STEPS`
 - `VLOGME_AVATAR_SEED`
 - `VLOGME_AVATAR_FACE_RESTORE`
 - `VLOGME_AVATAR_BACKGROUND_RESTORE`
+
+Replicate `gpu-a100-large-2x` defaults to `split`: GPU 0 handles DiT/denoise
+and GPU 1 handles VAE/decode/stream-file/post-VAE work. `dit2` remains available
+only as an explicit benchmark mode.
 
 Output:
 

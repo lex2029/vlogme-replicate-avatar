@@ -16,18 +16,22 @@ speech audio file and return a generated avatar MP4.
   so a fresh container will verify local weights and then try to download missing
   assets.
 - The default runtime profile targets Replicate `gpu-a100-large-2x`:
-  `VLOGME_AVATAR_GPU_LAYOUT=auto`. Auto uses both A100 cards for DiT/denoise
-  (`dit2`) while face/background/interpolation postprocessing is disabled, then
-  switches to the split layout when those GPU1 decode/post stages are enabled.
-  The default first-pass Replicate canvas is portrait `704*384` (Wan/model order
-  is height*width), with 32-frame inference windows, 6
-  inference steps, and face restore disabled. The public `predict()` input also
-  accepts `sample_steps`; use `4` for smoke tests and `6+` for quality checks.
-  Tune `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
-  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. Set
-  `VLOGME_AVATAR_GPU_LAYOUT=split` to force one A100 for DiT/denoise and the
-  second for VAE/decode/postprocessing, `dit2` to force both A100 cards for
-  distributed DiT/denoise, or `single` for one-GPU debugging.
+  `VLOGME_AVATAR_GPU_LAYOUT=split`. Split runs DiT/denoise on GPU 0 and keeps
+  GPU 1 dedicated to VAE/decode/stream-file/post-VAE work. `auto` currently
+  resolves to the same split layout because the Replicate path is expected to
+  add GPU1 post-VAE stages. Use `VLOGME_AVATAR_GPU_LAYOUT=dit2` only for explicit
+  A/B tests where both A100 cards should shard DiT/denoise. The default
+  first-pass Replicate canvas is portrait `704*384` (Wan/model order is
+  height*width), with 32-frame inference windows, 6 inference steps, and face
+  restore disabled. The public `predict()` input also accepts `sample_steps`;
+  use `4` for smoke tests and `6+` for quality checks. Tune
+  `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
+  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable.
+- A100 acceleration defaults are conservative: BF16/TF32 enabled, merged
+  LiveAvatar checkpoint enabled, cuDNN SDPA allowed, external FlashAttention
+  disabled, FP8 off, and `torch.compile` off. Compile can be tested with
+  `VLOGME_AVATAR_ENABLE_COMPILE=true`; it is restricted to the stable head
+  region and skips the dynamic live KV-cache/rope paths.
 - Secrets are not needed for the first audio-driven avatar test.
 
 ## First Local Test

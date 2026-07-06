@@ -55,16 +55,9 @@ def _env_float(name: str, default: float = 0.0) -> float:
 
 
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "auto").strip().lower() or "auto"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
     if layout in {"auto", "a100", "a100_auto"}:
-        needs_dedicated_decode = (
-            _env_float("VLOGME_AVATAR_FACE_RESTORE", 0.0) > 0.0
-            or _env_float("VLOGME_AVATAR_BACKGROUND_RESTORE", 0.0) > 0.0
-            or bool(str(os.environ.get("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "") or "").strip())
-            or str(os.environ.get("VLOGME_AVATAR_FORCE_VAE_SPLIT", "0") or "0").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
-        layout = "split" if needs_dedicated_decode else "dit2"
+        layout = "split"
     os.environ["VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE"] = str(layout)
     if layout in {"single", "1", "one"}:
         return {
@@ -101,6 +94,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("TORCH_CUDA_MATMUL_ALLOW_TF32", "1")
     os.environ.setdefault("TORCH_CUDNN_ALLOW_TF32", "1")
     os.environ.setdefault("TORCH_CUDNN_BENCHMARK", "1")
+    os.environ.setdefault("NCCL_P2P_PREWARM", "1")
     os.environ.setdefault("WORKER_BOOT_LOG", "1")
     os.environ.setdefault("WORKER_API_KEY", "replicate-local")
     os.environ.setdefault("SMARTBLOG_MOCK_CLAIM_FILE", "/tmp/vlogme-replicate-avatar-unused-claim.json")
@@ -115,6 +109,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ["MERGED_NOISE_MODEL_DIR"] = str(
         asset_root / "ckpt" / "Wan2.2-S2V-14B-merged-liveavatar-prefp8-test"
     )
+    os.environ.setdefault("USE_MERGED_CKPT", "1")
 
     os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_values["CUDA_VISIBLE_DEVICES"])
     os.environ.setdefault("TORCHRUN_NPROC", gpu_values["TORCHRUN_NPROC"])
@@ -148,6 +143,10 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_AUDIO_STREAM_FILL_NOISE_STD", "0.0003")
     os.environ.setdefault("LIVE_AUDIO_STREAM_FILL_NOISE_SEED", "420")
     os.environ.setdefault("LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH", "1")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_REF_LATENTS", "0")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded")
+    os.environ.setdefault("LIVE_STREAM_MOTION_LATENTS_SYNC", "1")
 
     # Replicate should return a local MP4. No VlogMe upload, no remote RTX edge.
     os.environ["REMOTE_EDGE_ENABLED"] = "0"
@@ -158,12 +157,34 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ["SMARTBLOG_RENDER_BURN_IN_SUBTITLES"] = os.environ.get("SMARTBLOG_RENDER_BURN_IN_SUBTITLES", "0")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_CRF", "19")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4")
     os.environ.setdefault("SMARTBLOG_RENDER_SINGLE_AVATAR_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_AVATAR_LIVEAUDIO_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_TRIM_TRAILING_SILENCE", "1")
     os.environ.setdefault("USE_FP8", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
     os.environ.setdefault("LIVEAVATAR_FP8_QUANT_COMPILE", os.environ.get("VLOGME_AVATAR_USE_FP8", "0"))
     os.environ.setdefault("ENABLE_COMPILE", os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"))
+    os.environ.setdefault("TORCH_COMPILE_DYNAMIC", os.environ.get("VLOGME_AVATAR_TORCH_COMPILE_DYNAMIC", "0"))
+    os.environ.setdefault("TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS", "1")
+    os.environ.setdefault("TORCH_COMPILE_SAFE_FALLBACK", "1")
+    os.environ.setdefault("TORCH_COMPILE_INCLUDE_FUNCS", "CausalHead_S2V.forward")
+    os.environ.setdefault(
+        "TORCH_COMPILE_SKIP_FUNCS",
+        "_forward_inference,rope_apply,rope_apply_cond,CausalWanS2VAttention.forward,CausalWanS2VAttentionBlock._cross_attn_ffn",
+    )
+    os.environ.setdefault("TORCHINDUCTOR_CUDAGRAPHS", "0")
+    os.environ.setdefault("TORCHINDUCTOR_TRITON_CUDAGRAPH_TREES", "0")
+    os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_CACHE", "1")
+    os.environ.setdefault("TORCHINDUCTOR_MAX_AUTOTUNE", "0")
+    os.environ.setdefault("TORCHINDUCTOR_MAX_AUTOTUNE_GEMM", "0")
+    os.environ.setdefault("TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE", "0")
+    os.environ.setdefault("TORCHINDUCTOR_COORDINATE_DESCENT_TUNING", "0")
+    os.environ.setdefault("TORCHINDUCTOR_TRITON_AUTOTUNE_AT_COMPILE_TIME", "0")
+    os.environ.setdefault("TORCHINDUCTOR_COMPILE_THREADS", "8")
+    os.environ.setdefault("LIVEAVATAR_DISABLE_FLASH_ATTN", os.environ.get("VLOGME_AVATAR_DISABLE_FLASH_ATTN", "true"))
+    os.environ.setdefault("LIVEAVATAR_DISABLE_CUDNN_ATTN", os.environ.get("VLOGME_AVATAR_DISABLE_CUDNN_ATTN", "false"))
+    os.environ.setdefault("LIVEAVATAR_FORCE_TORCH_SDPA_MATH", os.environ.get("VLOGME_AVATAR_FORCE_TORCH_SDPA_MATH", "false"))
+    os.environ.setdefault("LIVEAVATAR_FORCE_EAGER_ATTN", os.environ.get("VLOGME_AVATAR_FORCE_EAGER_ATTN", "false"))
     os.environ.setdefault("MODEL_TIMING_LOG", "1")
     os.environ.setdefault("POST_VAE_TIMING_LOG", "1")
     os.environ.setdefault("LIVE_AUDIO_TPP_TIMING_LOG", "1")
@@ -212,10 +233,12 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "TORCH_CUDA_MATMUL_ALLOW_TF32": os.environ.get("TORCH_CUDA_MATMUL_ALLOW_TF32", "1"),
         "TORCH_CUDNN_ALLOW_TF32": os.environ.get("TORCH_CUDNN_ALLOW_TF32", "1"),
         "TORCH_CUDNN_BENCHMARK": os.environ.get("TORCH_CUDNN_BENCHMARK", "1"),
+        "NCCL_P2P_PREWARM": os.environ.get("NCCL_P2P_PREWARM", "1"),
         "HF_HOME": str(asset_root / "hf"),
         "CKPT_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B"),
         "LORA_PATH_DMD": str(asset_root / "ckpt" / "LiveAvatar" / "liveavatar.safetensors"),
         "MERGED_NOISE_MODEL_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B-merged-liveavatar-prefp8-test"),
+        "USE_MERGED_CKPT": os.environ.get("USE_MERGED_CKPT", "1"),
         "SIZE": size,
         "SMARTBLOG_LIVE_PROFILE": live_profile,
         "SMARTBLOG_RENDER_VIDEO_PROFILE": live_profile,
@@ -251,6 +274,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_RENDER_BURN_IN_SUBTITLES": "0",
         "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast"),
         "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "19"),
+        "SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS": os.environ.get("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4"),
         "LIVE_STREAM_KV_CACHE_FRAMES": os.environ.get("VLOGME_AVATAR_KV_CACHE_FRAMES", "32"),
         "LIVE_AUDIO_STREAM_ALLOW_LONG_CLIPS": "1",
         "LIVE_AUDIO_STREAM_MAX_CLIP_FRAMES": os.environ.get("VLOGME_AVATAR_MAX_CLIP_FRAMES", "32"),
@@ -279,6 +303,10 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_AUDIO_STREAM_FILL_NOISE_STD": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_STD", "0.0003"),
         "LIVE_AUDIO_STREAM_FILL_NOISE_SEED": os.environ.get("LIVE_AUDIO_STREAM_FILL_NOISE_SEED", "420"),
         "LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH": os.environ.get("LIVE_AUDIO_STREAM_CLIP_PROMPT_SWITCH", "1"),
+        "LIVE_STREAM_UPDATE_REF_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_REF_LATENTS", "0"),
+        "LIVE_STREAM_UPDATE_MOTION_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1"),
+        "LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded"),
+        "LIVE_STREAM_MOTION_LATENTS_SYNC": os.environ.get("LIVE_STREAM_MOTION_LATENTS_SYNC", "1"),
         "WORKER_AUDIO_NUM_CLIP_PAD_SEC": os.environ.get("WORKER_AUDIO_NUM_CLIP_PAD_SEC", "0"),
         "MODEL_TIMING_LOG": os.environ.get("MODEL_TIMING_LOG", "1"),
         "POST_VAE_TIMING_LOG": os.environ.get("POST_VAE_TIMING_LOG", "1"),
@@ -286,6 +314,29 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "USE_FP8": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "LIVEAVATAR_FP8_QUANT_COMPILE": os.environ.get("VLOGME_AVATAR_USE_FP8", "0"),
         "ENABLE_COMPILE": os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false"),
+        "TORCH_COMPILE_DYNAMIC": os.environ.get("TORCH_COMPILE_DYNAMIC", "0"),
+        "TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS": os.environ.get("TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS", "1"),
+        "TORCH_COMPILE_SAFE_FALLBACK": os.environ.get("TORCH_COMPILE_SAFE_FALLBACK", "1"),
+        "TORCH_COMPILE_INCLUDE_FUNCS": os.environ.get("TORCH_COMPILE_INCLUDE_FUNCS", "CausalHead_S2V.forward"),
+        "TORCH_COMPILE_SKIP_FUNCS": os.environ.get(
+            "TORCH_COMPILE_SKIP_FUNCS",
+            "_forward_inference,rope_apply,rope_apply_cond,CausalWanS2VAttention.forward,CausalWanS2VAttentionBlock._cross_attn_ffn",
+        ),
+        "TORCHINDUCTOR_CUDAGRAPHS": os.environ.get("TORCHINDUCTOR_CUDAGRAPHS", "0"),
+        "TORCHINDUCTOR_TRITON_CUDAGRAPH_TREES": os.environ.get("TORCHINDUCTOR_TRITON_CUDAGRAPH_TREES", "0"),
+        "TORCHINDUCTOR_FX_GRAPH_CACHE": os.environ.get("TORCHINDUCTOR_FX_GRAPH_CACHE", "1"),
+        "TORCHINDUCTOR_MAX_AUTOTUNE": os.environ.get("TORCHINDUCTOR_MAX_AUTOTUNE", "0"),
+        "TORCHINDUCTOR_MAX_AUTOTUNE_GEMM": os.environ.get("TORCHINDUCTOR_MAX_AUTOTUNE_GEMM", "0"),
+        "TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE": os.environ.get("TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE", "0"),
+        "TORCHINDUCTOR_COORDINATE_DESCENT_TUNING": os.environ.get("TORCHINDUCTOR_COORDINATE_DESCENT_TUNING", "0"),
+        "TORCHINDUCTOR_TRITON_AUTOTUNE_AT_COMPILE_TIME": os.environ.get(
+            "TORCHINDUCTOR_TRITON_AUTOTUNE_AT_COMPILE_TIME", "0"
+        ),
+        "TORCHINDUCTOR_COMPILE_THREADS": os.environ.get("TORCHINDUCTOR_COMPILE_THREADS", "8"),
+        "LIVEAVATAR_DISABLE_FLASH_ATTN": os.environ.get("LIVEAVATAR_DISABLE_FLASH_ATTN", "true"),
+        "LIVEAVATAR_DISABLE_CUDNN_ATTN": os.environ.get("LIVEAVATAR_DISABLE_CUDNN_ATTN", "false"),
+        "LIVEAVATAR_FORCE_TORCH_SDPA_MATH": os.environ.get("LIVEAVATAR_FORCE_TORCH_SDPA_MATH", "false"),
+        "LIVEAVATAR_FORCE_EAGER_ATTN": os.environ.get("LIVEAVATAR_FORCE_EAGER_ATTN", "false"),
     }
     os.environ.update(profile_values)
 
