@@ -173,8 +173,8 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         size = "832*448"
         live_profile = "highres_2x"
     else:
-        size = os.environ.get("VLOGME_AVATAR_SIZE", "384*704").strip() or "384*704"
-        live_profile = "highres_1_5x"
+        size = os.environ.get("VLOGME_AVATAR_SIZE", "704*384").strip() or "704*384"
+        live_profile = os.environ.get("VLOGME_AVATAR_LIVE_PROFILE", "compact_704").strip() or "compact_704"
     profile_values = {
         "WORKER_PROFILE_NAME": "replicate-avatar",
         "WORKER_ASSET_ROOT": str(asset_root),
@@ -376,6 +376,9 @@ class Predictor(BasePredictor):
         job_id = f"replicate_avatar_{int(time.time() * 1000)}"
         video_config: dict[str, Any] = {
             "mode": "avatar",
+            "orientation": "portrait",
+            "render_size": os.environ.get("SIZE", "704*384"),
+            "video_size": {"width": 720, "height": 1280},
             "num_inference_steps": int(sample_steps),
             "seed": int(seed),
             "prompt": str(prompt or ""),
@@ -397,6 +400,9 @@ class Predictor(BasePredictor):
                 },
             },
             "assets": {
+                "orientation": "portrait",
+                "render_size": os.environ.get("SIZE", "704*384"),
+                "video_size": {"width": 720, "height": 1280},
                 "avatar_url": _file_uri(avatar_path),
                 "audio_chunks": [
                     {
