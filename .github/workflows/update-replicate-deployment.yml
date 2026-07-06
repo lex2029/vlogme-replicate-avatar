@@ -1,0 +1,80 @@
+name: Update Replicate Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Replicate model name, for example "lex2029/vlogme-avatar"'
+        required: true
+        default: "lex2029/vlogme-avatar"
+      deployment:
+        description: 'Deployment, for example "lex2029/vlogme-avatar-a100-2x"'
+        required: true
+        default: "lex2029/vlogme-avatar-a100-2x"
+      version:
+        description: "Optional exact version id. Defaults to the latest model version."
+        required: false
+        default: ""
+
+jobs:
+  update_deployment:
+    name: Update Replicate Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Point deployment at version
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          MODEL_NAME: ${{ inputs.model_name }}
+          DEPLOYMENT: ${{ inputs.deployment }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          api_root = "https://api.replicate.com/v1"
+          token = os.environ["REPLICATE_API_TOKEN"].strip()
+          model_name = os.environ["MODEL_NAME"].strip()
+          deployment = os.environ["DEPLOYMENT"].strip()
+          version = os.environ["VERSION"].strip()
+
+          def request(method, url, body=None):
+              data = None
+              headers = {
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/json",
+                  "User-Agent": "vlogme-replicate-avatar-deployment-update/1.0",
+              }
+              if body is not None:
+                  data = json.dumps(body).encode("utf-8")
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as response:
+                      return json.loads(response.read().decode("utf-8"))
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(f"Replicate API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
+
+          if not version:
+              versions = request("GET", f"{api_root}/models/{model_name}/versions")
+              results = versions.get("results", []) if isinstance(versions, dict) else versions
+              if not results:
+                  raise RuntimeError(f"No versions found for {model_name}")
+              version = str(results[0].get("id") or "").strip()
+              if not version:
+                  raise RuntimeError(f"Latest version has no id: {results[0]!r}")
+
+          print(f"Updating deployment {deployment} to version {version}")
+          updated = request("PATCH", f"{api_root}/deployments/{deployment}", {"version": version})
+          print(json.dumps(
+              {
+                  "name": updated.get("name"),
+                  "version": updated.get("version"),
+                  "hardware": updated.get("hardware"),
+              },
+              indent=2,
+          ))
+          PY
