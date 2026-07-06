@@ -47,8 +47,25 @@ def _copy_input(src: Path, dst: SysPath) -> SysPath:
     return dst
 
 
+def _env_float(name: str, default: float = 0.0) -> float:
+    try:
+        return float(os.environ.get(name, str(default)) or default)
+    except Exception:
+        return float(default)
+
+
 def _gpu_runtime_values() -> dict[str, str]:
-    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "split").strip().lower() or "split"
+    layout = os.environ.get("VLOGME_AVATAR_GPU_LAYOUT", "auto").strip().lower() or "auto"
+    if layout in {"auto", "a100", "a100_auto"}:
+        needs_dedicated_decode = (
+            _env_float("VLOGME_AVATAR_FACE_RESTORE", 0.0) > 0.0
+            or _env_float("VLOGME_AVATAR_BACKGROUND_RESTORE", 0.0) > 0.0
+            or bool(str(os.environ.get("VLOGME_AVATAR_STREAM_FILE_INTERPOLATION", "") or "").strip())
+            or str(os.environ.get("VLOGME_AVATAR_FORCE_VAE_SPLIT", "0") or "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        layout = "split" if needs_dedicated_decode else "dit2"
+    os.environ["VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE"] = str(layout)
     if layout in {"single", "1", "one"}:
         return {
             "CUDA_VISIBLE_DEVICES": os.environ.get("VLOGME_AVATAR_CUDA_VISIBLE_DEVICES", "0"),
@@ -78,6 +95,12 @@ def _set_default_env(asset_root: SysPath) -> None:
     gpu_values = _gpu_runtime_values()
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    os.environ.setdefault("NVIDIA_TF32_OVERRIDE", "1")
+    os.environ.setdefault("TORCH_ALLOW_TF32_CUBLAS_OVERRIDE", "1")
+    os.environ.setdefault("TORCH_FLOAT32_MATMUL_PRECISION", "high")
+    os.environ.setdefault("TORCH_CUDA_MATMUL_ALLOW_TF32", "1")
+    os.environ.setdefault("TORCH_CUDNN_ALLOW_TF32", "1")
+    os.environ.setdefault("TORCH_CUDNN_BENCHMARK", "1")
     os.environ.setdefault("WORKER_BOOT_LOG", "1")
     os.environ.setdefault("WORKER_API_KEY", "replicate-local")
     os.environ.setdefault("SMARTBLOG_MOCK_CLAIM_FILE", "/tmp/vlogme-replicate-avatar-unused-claim.json")
@@ -133,6 +156,8 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ["SMARTBLOG_RENDER_FINALIZE_BACKGROUND"] = "0"
     os.environ["SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND"] = "0"
     os.environ["SMARTBLOG_RENDER_BURN_IN_SUBTITLES"] = os.environ.get("SMARTBLOG_RENDER_BURN_IN_SUBTITLES", "0")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_CRF", "19")
     os.environ.setdefault("SMARTBLOG_RENDER_SINGLE_AVATAR_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_AVATAR_LIVEAUDIO_ONE_PASS", "1")
     os.environ.setdefault("SMARTBLOG_RENDER_TRIM_TRAILING_SILENCE", "1")
@@ -181,6 +206,12 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "ULYSSES_SIZE": gpu_values["ULYSSES_SIZE"],
         "ENABLE_VAE_PARALLEL": gpu_values["ENABLE_VAE_PARALLEL"],
         "PYTORCH_CUDA_ALLOC_CONF": os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"),
+        "NVIDIA_TF32_OVERRIDE": os.environ.get("NVIDIA_TF32_OVERRIDE", "1"),
+        "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE": os.environ.get("TORCH_ALLOW_TF32_CUBLAS_OVERRIDE", "1"),
+        "TORCH_FLOAT32_MATMUL_PRECISION": os.environ.get("TORCH_FLOAT32_MATMUL_PRECISION", "high"),
+        "TORCH_CUDA_MATMUL_ALLOW_TF32": os.environ.get("TORCH_CUDA_MATMUL_ALLOW_TF32", "1"),
+        "TORCH_CUDNN_ALLOW_TF32": os.environ.get("TORCH_CUDNN_ALLOW_TF32", "1"),
+        "TORCH_CUDNN_BENCHMARK": os.environ.get("TORCH_CUDNN_BENCHMARK", "1"),
         "HF_HOME": str(asset_root / "hf"),
         "CKPT_DIR": str(asset_root / "ckpt" / "Wan2.2-S2V-14B"),
         "LORA_PATH_DMD": str(asset_root / "ckpt" / "LiveAvatar" / "liveavatar.safetensors"),
@@ -218,6 +249,8 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_RENDER_FINALIZE_BACKGROUND": "0",
         "SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND": "0",
         "SMARTBLOG_RENDER_BURN_IN_SUBTITLES": "0",
+        "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast"),
+        "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "19"),
         "LIVE_STREAM_KV_CACHE_FRAMES": os.environ.get("VLOGME_AVATAR_KV_CACHE_FRAMES", "32"),
         "LIVE_AUDIO_STREAM_ALLOW_LONG_CLIPS": "1",
         "LIVE_AUDIO_STREAM_MAX_CLIP_FRAMES": os.environ.get("VLOGME_AVATAR_MAX_CLIP_FRAMES", "32"),
@@ -416,7 +449,7 @@ class Predictor(BasePredictor):
 
         _log(
             "direct avatar infer: "
-            f"layout={os.environ.get('VLOGME_AVATAR_GPU_LAYOUT', 'split') or 'split'} "
+            f"layout={os.environ.get('VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE', os.environ.get('VLOGME_AVATAR_GPU_LAYOUT', 'auto')) or 'auto'} "
             f"cuda={os.environ.get('CUDA_VISIBLE_DEVICES', '')} "
             f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
             f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "

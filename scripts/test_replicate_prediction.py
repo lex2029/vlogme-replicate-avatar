@@ -101,6 +101,7 @@ def main() -> int:
     parser.add_argument("--poll-sec", type=int, default=30)
     parser.add_argument("--sample-steps", type=int, default=0)
     parser.add_argument("--audio-seconds", type=float, default=2.0)
+    parser.add_argument("--log-tail-chars", type=int, default=20000)
     args = parser.parse_args()
 
     token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
@@ -169,7 +170,7 @@ def main() -> int:
                     indent=2,
                     ensure_ascii=False,
                 ))
-                logs = _tail_logs(prediction)
+                logs = _tail_logs(prediction, max_chars=max(1000, int(args.log_tail_chars or 0)))
                 if logs:
                     print("Log tail:")
                     print(logs)

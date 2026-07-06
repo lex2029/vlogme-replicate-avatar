@@ -13,7 +13,42 @@ from avalife.core.args import parse_runtime_args
 from avalife.worker.current_run import record_current_torchrun_run
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return bool(default)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _configure_torch_acceleration_defaults() -> None:
+    try:
+        import torch
+    except Exception:
+        return
+
+    precision = str(os.getenv("TORCH_FLOAT32_MATMUL_PRECISION", "high") or "high").strip().lower()
+    if precision:
+        try:
+            torch.set_float32_matmul_precision(precision)
+        except Exception as exc:
+            logging.warning("Failed to set torch float32 matmul precision=%s: %s", precision, exc)
+
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = _env_flag("TORCH_CUDA_MATMUL_ALLOW_TF32", True)
+    except Exception:
+        pass
+    try:
+        torch.backends.cudnn.allow_tf32 = _env_flag("TORCH_CUDNN_ALLOW_TF32", True)
+    except Exception:
+        pass
+    try:
+        torch.backends.cudnn.benchmark = _env_flag("TORCH_CUDNN_BENCHMARK", True)
+    except Exception:
+        pass
+
+
 def main() -> None:
+    _configure_torch_acceleration_defaults()
     heartbeat: ProcessHeartbeat | None = None
     if str(os.getenv("LOCAL_RANK", "0") or "0").strip() == "0":
         run_dir = record_current_torchrun_run()

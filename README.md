@@ -16,16 +16,18 @@ speech audio file and return a generated avatar MP4.
   so a fresh container will verify local weights and then try to download missing
   assets.
 - The default runtime profile targets Replicate `gpu-a100-large-2x`:
-  `VLOGME_AVATAR_GPU_LAYOUT=split`, using one A100 for DiT/denoise and the
-  second A100 for VAE/decode/postprocessing. The default first-pass Replicate
-  canvas is portrait `704*384` (Wan/model order is height*width), with 32-frame
-  inference windows, 6
+  `VLOGME_AVATAR_GPU_LAYOUT=auto`. Auto uses both A100 cards for DiT/denoise
+  (`dit2`) while face/background/interpolation postprocessing is disabled, then
+  switches to the split layout when those GPU1 decode/post stages are enabled.
+  The default first-pass Replicate canvas is portrait `704*384` (Wan/model order
+  is height*width), with 32-frame inference windows, 6
   inference steps, and face restore disabled. The public `predict()` input also
   accepts `sample_steps`; use `4` for smoke tests and `6+` for quality checks.
   Tune `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
   `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. Set
-  `VLOGME_AVATAR_GPU_LAYOUT=dit2` to use both A100 cards for distributed
-  DiT/denoise, or `single` for one-GPU debugging.
+  `VLOGME_AVATAR_GPU_LAYOUT=split` to force one A100 for DiT/denoise and the
+  second for VAE/decode/postprocessing, `dit2` to force both A100 cards for
+  distributed DiT/denoise, or `single` for one-GPU debugging.
 - Secrets are not needed for the first audio-driven avatar test.
 
 ## First Local Test
