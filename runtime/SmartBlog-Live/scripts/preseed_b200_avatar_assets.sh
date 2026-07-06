@@ -101,8 +101,7 @@ PY
 }
 
 verify_all() {
-  verify_asset_files
-  verify_wav2vec_cache
+  verify_asset_files && verify_wav2vec_cache
 }
 
 preseed_worker_assets() {
