@@ -163,7 +163,8 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_STREAM_UPDATE_REF_LATENTS", "0")
     os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1")
     os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded")
-    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "1")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "0")
+    os.environ.setdefault("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE", "latent")
     os.environ.setdefault("LIVE_STREAM_MOTION_LATENTS_SYNC", "1")
 
     # Replicate should return a local MP4. No VlogMe upload, no remote RTX edge.
@@ -329,7 +330,10 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_STREAM_UPDATE_REF_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_REF_LATENTS", "0"),
         "LIVE_STREAM_UPDATE_MOTION_LATENTS": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS", "1"),
         "LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_MODE", "decoded"),
-        "LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "1"),
+        "LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE": os.environ.get("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "0"),
+        "LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE": os.environ.get(
+            "LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE", "latent"
+        ),
         "LIVE_STREAM_MOTION_LATENTS_SYNC": os.environ.get("LIVE_STREAM_MOTION_LATENTS_SYNC", "1"),
         "WORKER_AUDIO_NUM_CLIP_PAD_SEC": os.environ.get("WORKER_AUDIO_NUM_CLIP_PAD_SEC", "0"),
         "MODEL_TIMING_LOG": os.environ.get("MODEL_TIMING_LOG", "1"),
@@ -396,6 +400,8 @@ class Predictor(BasePredictor):
         kv_cache_frames: int = 0,
         wan_block_frames: int = 0,
         infer_frames: int = 0,
+        motion_file: int = -1,
+        motion_mode: str = "",
     ) -> None:
         requested: dict[str, str] = {}
         layout = str(gpu_layout or "").strip().lower()
@@ -453,6 +459,22 @@ class Predictor(BasePredictor):
         if infer_override > 0:
             requested["VLOGME_AVATAR_INFER_FRAMES"] = str(max(4, min(512, int(infer_override))))
 
+        try:
+            motion_file_override = int(motion_file)
+        except Exception:
+            motion_file_override = -1
+        if motion_file_override in {0, 1}:
+            requested["LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE"] = "1" if motion_file_override == 1 else "0"
+
+        motion_mode_override = str(motion_mode or "").strip().lower()
+        if motion_mode_override:
+            if motion_mode_override in {"rgb", "image", "images", "decoded", "decode", "vae"}:
+                requested["LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE"] = "decoded"
+            elif motion_mode_override in {"latent", "latents"}:
+                requested["LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE"] = "latent"
+            else:
+                raise RuntimeError(f"Unsupported motion_mode override: {motion_mode_override}")
+
         if not requested:
             return
         if self.runtime_ready:
@@ -493,6 +515,7 @@ class Predictor(BasePredictor):
             f"kv_frames={os.environ.get('LIVE_STREAM_KV_CACHE_FRAMES', '')} "
             f"infer_frames={os.environ.get('INFER_FRAMES', '')} "
             f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
+            f"motion_mode={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
             f"fp8_quant_compile={os.environ.get('LIVEAVATAR_FP8_QUANT_COMPILE', '0')} "
             f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
@@ -577,6 +600,14 @@ class Predictor(BasePredictor):
             description="Optional cold-start generated frames per clip. 0 keeps the deployment default.",
             default=0,
         ),
+        motion_file: int = Input(
+            description="Optional cold-start file-render motion-state override: -1 default, 0 disabled, 1 enabled.",
+            default=-1,
+        ),
+        motion_mode: str = Input(
+            description="Optional cold-start file-render motion-state mode: latent or decoded.",
+            default="",
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -597,6 +628,8 @@ class Predictor(BasePredictor):
             kv_cache_frames=kv_cache_frames,
             wan_block_frames=wan_block_frames,
             infer_frames=infer_frames,
+            motion_file=motion_file,
+            motion_mode=motion_mode,
         )
         stack_watchdog_sec = _env_int("VLOGME_AVATAR_STACK_WATCHDOG_SEC", 180)
         if int(stack_watchdog_sec) > 0:

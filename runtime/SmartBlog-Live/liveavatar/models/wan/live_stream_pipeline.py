@@ -5746,6 +5746,18 @@ class WanS2V:
                 str(os.getenv("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE", "0") or "0").strip().lower()
                 in {"1", "true", "yes", "on"}
             )
+            stream_file_motion_update_mode = str(
+                os.getenv("LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE", "latent") or "latent"
+            ).strip().lower()
+            if stream_file_motion_update_mode in {"rgb", "image", "images", "decoded", "decode", "vae"}:
+                stream_file_motion_update_mode = "decoded"
+            else:
+                stream_file_motion_update_mode = "latent"
+            effective_motion_latents_update_mode = (
+                str(stream_motion_latents_update_mode)
+                if bool(stream_audio_mode)
+                else str(stream_file_motion_update_mode)
+            )
             stateful_motion_latents = bool(
                 stream_update_motion_latents
                 and (
@@ -5755,7 +5767,7 @@ class WanS2V:
             )
             stream_update_motion_from_decoded = bool(
                 stateful_motion_latents
-                and stream_motion_latents_update_mode == "decoded"
+                and effective_motion_latents_update_mode == "decoded"
             )
             stream_motion_latents_sync = (
                 str(os.getenv("LIVE_STREAM_MOTION_LATENTS_SYNC", "1") or "1").strip().lower()
@@ -5773,7 +5785,7 @@ class WanS2V:
                     f"steps={sampling_steps}, size={HEIGHT}x{WIDTH}, num_gpus_dit={num_gpus_dit}, "
                     f"vae_parallel={enable_vae_parallel} stream_mode={1 if stream_audio_mode else 0} "
                     f"ref_update={1 if stream_update_ref_latents else 0} "
-                    f"motion_update={str(stream_motion_latents_update_mode)} "
+                    f"motion_update={str(effective_motion_latents_update_mode)} "
                     f"motion_state={1 if stateful_motion_latents else 0}",
                     flush=True,
                 )

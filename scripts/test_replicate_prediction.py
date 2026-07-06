@@ -117,6 +117,8 @@ def main() -> int:
     parser.add_argument("--kv-cache-frames", type=int, default=0)
     parser.add_argument("--wan-block-frames", type=int, default=0)
     parser.add_argument("--infer-frames", type=int, default=0)
+    parser.add_argument("--motion-file", type=int, default=-1)
+    parser.add_argument("--motion-mode", default="")
     parser.add_argument("--audio-seconds", type=float, default=2.0)
     parser.add_argument("--log-tail-chars", type=int, default=20000)
     parser.add_argument("--live-log-chars", type=int, default=6000)
@@ -155,6 +157,10 @@ def main() -> int:
         payload["input"]["wan_block_frames"] = int(args.wan_block_frames)
     if int(args.infer_frames or 0) > 0:
         payload["input"]["infer_frames"] = int(args.infer_frames)
+    if int(args.motion_file) in {0, 1}:
+        payload["input"]["motion_file"] = int(args.motion_file)
+    if str(args.motion_mode or "").strip():
+        payload["input"]["motion_mode"] = str(args.motion_mode or "").strip()
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         payload["input"]["hf_token"] = hf_token

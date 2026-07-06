@@ -55,6 +55,14 @@ on:
         description: "Optional cold-start generated frames per clip. 0 keeps default."
         required: false
         default: "0"
+      motion_file:
+        description: "Optional cold-start file-render motion-state override: -1 default, 0 off, 1 on."
+        required: false
+        default: "-1"
+      motion_mode:
+        description: "Optional cold-start file-render motion-state mode: latent or decoded."
+        required: false
+        default: ""
       audio_seconds:
         description: "Generated smoke audio duration in seconds"
         required: false
@@ -89,4 +97,6 @@ jobs:
             --kv-cache-frames "${{ inputs.kv_cache_frames }}" \
             --wan-block-frames "${{ inputs.wan_block_frames }}" \
             --infer-frames "${{ inputs.infer_frames }}" \
+            --motion-file "${{ inputs.motion_file }}" \
+            --motion-mode "${{ inputs.motion_mode }}" \
             --audio-seconds "${{ inputs.audio_seconds }}"
