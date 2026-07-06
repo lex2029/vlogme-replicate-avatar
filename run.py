@@ -371,6 +371,60 @@ class Predictor(BasePredictor):
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
         )
 
+    def _apply_cold_runtime_overrides(
+        self,
+        *,
+        gpu_layout: str = "",
+        use_fp8: int = -1,
+        enable_compile: int = -1,
+    ) -> None:
+        requested: dict[str, str] = {}
+        layout = str(gpu_layout or "").strip().lower()
+        if layout:
+            if layout not in {"auto", "a100", "a100_auto", "split", "split_vae", "dit1_vae1", "vae", "dit2", "single"}:
+                raise RuntimeError(f"Unsupported gpu_layout override: {layout}")
+            requested["VLOGME_AVATAR_GPU_LAYOUT"] = layout
+
+        try:
+            fp8_override = int(use_fp8)
+        except Exception:
+            fp8_override = -1
+        if fp8_override in {0, 1}:
+            requested["VLOGME_AVATAR_USE_FP8"] = "1" if fp8_override == 1 else "0"
+
+        try:
+            compile_override = int(enable_compile)
+        except Exception:
+            compile_override = -1
+        if compile_override in {0, 1}:
+            requested["VLOGME_AVATAR_ENABLE_COMPILE"] = "true" if compile_override == 1 else "false"
+
+        if not requested:
+            return
+        if self.runtime_ready:
+            raise RuntimeError("Runtime overrides require a cold worker; retry after scaling/restarting the deployment")
+
+        os.environ.update(requested)
+        gpu_values = _gpu_runtime_values()
+        for key, value in gpu_values.items():
+            os.environ[key] = value
+        os.environ["USE_FP8"] = os.environ.get("VLOGME_AVATAR_USE_FP8", "0")
+        os.environ["LIVEAVATAR_FP8_QUANT_COMPILE"] = os.environ.get("VLOGME_AVATAR_USE_FP8", "0")
+        os.environ["ENABLE_COMPILE"] = os.environ.get("VLOGME_AVATAR_ENABLE_COMPILE", "false")
+        _append_replicate_profile_overrides(
+            self.asset_root,
+            size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
+        )
+        _log(
+            "cold runtime overrides applied: "
+            f"layout={os.environ.get('VLOGME_AVATAR_GPU_LAYOUT_EFFECTIVE', os.environ.get('VLOGME_AVATAR_GPU_LAYOUT', ''))} "
+            f"cuda={os.environ.get('CUDA_VISIBLE_DEVICES', '')} "
+            f"num_gpus_dit={os.environ.get('NUM_GPUS_DIT', '')} "
+            f"vae_parallel={os.environ.get('ENABLE_VAE_PARALLEL', '')} "
+            f"fp8={os.environ.get('USE_FP8', '0')} "
+            f"compile={os.environ.get('ENABLE_COMPILE', 'false')}"
+        )
+
     def _ensure_runtime_ready(self) -> None:
         if self.runtime_ready:
             return
@@ -426,6 +480,18 @@ class Predictor(BasePredictor):
             description="Optional render watchdog in seconds. 0 disables the internal timeout.",
             default=0,
         ),
+        gpu_layout: str = Input(
+            description="Optional cold-start GPU layout override: split, dit2, or single.",
+            default="",
+        ),
+        use_fp8: int = Input(
+            description="Optional cold-start FP8 override: -1 default, 0 disabled, 1 enabled.",
+            default=-1,
+        ),
+        enable_compile: int = Input(
+            description="Optional cold-start torch.compile override: -1 default, 0 disabled, 1 enabled.",
+            default=-1,
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -439,6 +505,11 @@ class Predictor(BasePredictor):
                 os.environ["HUGGING_FACE_HUB_TOKEN"] = token
                 os.environ["SMARTBLOG_HF_TOKEN"] = token
                 _log("HF token provided")
+        self._apply_cold_runtime_overrides(
+            gpu_layout=gpu_layout,
+            use_fp8=use_fp8,
+            enable_compile=enable_compile,
+        )
         stack_watchdog_sec = _env_int("VLOGME_AVATAR_STACK_WATCHDOG_SEC", 180)
         if int(stack_watchdog_sec) > 0:
             try:

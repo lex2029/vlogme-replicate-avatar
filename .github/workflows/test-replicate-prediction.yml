@@ -31,6 +31,18 @@ on:
         description: "Optional internal model render watchdog. 0 disables it."
         required: false
         default: "0"
+      gpu_layout:
+        description: "Optional cold-start GPU layout override: split, dit2, or single."
+        required: false
+        default: ""
+      use_fp8:
+        description: "Optional cold-start FP8 override: -1 default, 0 off, 1 on."
+        required: false
+        default: "-1"
+      enable_compile:
+        description: "Optional cold-start compile override: -1 default, 0 off, 1 on."
+        required: false
+        default: "-1"
       audio_seconds:
         description: "Generated smoke audio duration in seconds"
         required: false
@@ -59,4 +71,7 @@ jobs:
             --poll-sec "${{ inputs.poll_sec }}" \
             --sample-steps "${{ inputs.sample_steps }}" \
             --render-timeout-sec "${{ inputs.render_timeout_sec }}" \
+            --gpu-layout "${{ inputs.gpu_layout }}" \
+            --use-fp8 "${{ inputs.use_fp8 }}" \
+            --enable-compile "${{ inputs.enable_compile }}" \
             --audio-seconds "${{ inputs.audio_seconds }}"
