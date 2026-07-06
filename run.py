@@ -422,6 +422,10 @@ class Predictor(BasePredictor):
             description="Denoising steps. Use 4 for smoke tests, 6+ for quality checks.",
             default=0,
         ),
+        render_timeout_sec: int = Input(
+            description="Optional render watchdog in seconds. 0 disables the internal timeout.",
+            default=0,
+        ),
         hf_token: Secret | None = Input(
             description="Optional Hugging Face token for private model weights",
             default=None,
@@ -450,17 +454,62 @@ class Predictor(BasePredictor):
         try:
             self._ensure_runtime_ready()
             _log("runtime ready; entering avatar render coroutine")
+            timeout_sec = int(render_timeout_sec or _env_int("VLOGME_AVATAR_RENDER_TIMEOUT_SEC", 0) or 0)
             result = asyncio.run(
-                self._predict_async(avatar_image=avatar_image, audio=audio, sample_steps_override=sample_steps)
+                self._predict_with_optional_timeout(
+                    avatar_image=avatar_image,
+                    audio=audio,
+                    sample_steps_override=sample_steps,
+                    timeout_sec=timeout_sec,
+                )
             )
             _log("avatar render coroutine completed")
             return result
+        except TimeoutError as exc:
+            timeout_sec = int(render_timeout_sec or _env_int("VLOGME_AVATAR_RENDER_TIMEOUT_SEC", 0) or 0)
+            _log(f"avatar render timed out after {timeout_sec}s")
+            try:
+                from avalife.worker.model_client import ModelRuntimeClient
+
+                cancel_resp = asyncio.run(
+                    ModelRuntimeClient().cancel_active_infer(reason=f"replicate_timeout_{timeout_sec}s")
+                )
+                _log(
+                    "model runtime cancel after timeout: "
+                    f"ok={1 if cancel_resp.ok else 0} cancelled={1 if cancel_resp.cancelled else 0} "
+                    f"active_job={cancel_resp.active_job_id or '-'} total={cancel_resp.total_s:.1f}s "
+                    f"error={cancel_resp.error or '-'}"
+                )
+            except Exception as cancel_exc:
+                _log(f"model runtime cancel after timeout failed: {cancel_exc}")
+            tail = _runtime_log_tail(max_chars=30000)
+            if tail:
+                _log(f"model runtime log tail after timeout:{tail}")
+            raise RuntimeError(f"Avatar render timed out after {timeout_sec}s") from exc
         finally:
             if int(stack_watchdog_sec) > 0:
                 try:
                     faulthandler.cancel_dump_traceback_later()
                 except Exception:
                     pass
+
+    async def _predict_with_optional_timeout(
+        self,
+        *,
+        avatar_image: Path,
+        audio: Path,
+        sample_steps_override: int = 0,
+        timeout_sec: int = 0,
+    ) -> Path:
+        coro = self._predict_async(
+            avatar_image=avatar_image,
+            audio=audio,
+            sample_steps_override=sample_steps_override,
+        )
+        if int(timeout_sec or 0) <= 0:
+            return await coro
+        _log(f"avatar render timeout armed: {int(timeout_sec)}s")
+        return await asyncio.wait_for(coro, timeout=float(timeout_sec))
 
     async def _predict_async(self, *, avatar_image: Path, audio: Path, sample_steps_override: int = 0) -> Path:
         prediction_started_at = time.monotonic()

@@ -110,6 +110,7 @@ def main() -> int:
     parser.add_argument("--poll-sec", type=int, default=30)
     parser.add_argument("--max-processing-sec", type=int, default=0)
     parser.add_argument("--sample-steps", type=int, default=0)
+    parser.add_argument("--render-timeout-sec", type=int, default=0)
     parser.add_argument("--audio-seconds", type=float, default=2.0)
     parser.add_argument("--log-tail-chars", type=int, default=20000)
     parser.add_argument("--live-log-chars", type=int, default=6000)
@@ -134,6 +135,8 @@ def main() -> int:
     }
     if int(args.sample_steps or 0) > 0:
         payload["input"]["sample_steps"] = int(args.sample_steps)
+    if int(args.render_timeout_sec or 0) > 0:
+        payload["input"]["render_timeout_sec"] = int(args.render_timeout_sec)
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         payload["input"]["hf_token"] = hf_token

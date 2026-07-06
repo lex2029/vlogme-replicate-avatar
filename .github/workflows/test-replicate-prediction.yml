@@ -27,6 +27,10 @@ on:
         description: "Optional denoising steps override. Use 4 for smoke, 6+ for quality."
         required: false
         default: "4"
+      render_timeout_sec:
+        description: "Optional internal model render watchdog. 0 disables it."
+        required: false
+        default: "0"
       audio_seconds:
         description: "Generated smoke audio duration in seconds"
         required: false
@@ -54,4 +58,5 @@ jobs:
             --max-processing-sec "${{ inputs.max_processing_sec }}" \
             --poll-sec "${{ inputs.poll_sec }}" \
             --sample-steps "${{ inputs.sample_steps }}" \
+            --render-timeout-sec "${{ inputs.render_timeout_sec }}" \
             --audio-seconds "${{ inputs.audio_seconds }}"
