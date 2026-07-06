@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import os
 import shutil
 import subprocess
@@ -52,6 +53,13 @@ def _env_float(name: str, default: float = 0.0) -> float:
         return float(os.environ.get(name, str(default)) or default)
     except Exception:
         return float(default)
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    try:
+        return int(str(os.environ.get(name, str(default)) or default).strip())
+    except Exception:
+        return int(default)
 
 
 def _gpu_runtime_values() -> dict[str, str]:
@@ -427,10 +435,32 @@ class Predictor(BasePredictor):
                 os.environ["HUGGING_FACE_HUB_TOKEN"] = token
                 os.environ["SMARTBLOG_HF_TOKEN"] = token
                 _log("HF token provided")
-        self._ensure_runtime_ready()
-        return asyncio.run(
-            self._predict_async(avatar_image=avatar_image, audio=audio, sample_steps_override=sample_steps)
-        )
+        stack_watchdog_sec = _env_int("VLOGME_AVATAR_STACK_WATCHDOG_SEC", 180)
+        if int(stack_watchdog_sec) > 0:
+            try:
+                faulthandler.enable(file=sys.stderr)
+                faulthandler.dump_traceback_later(
+                    int(stack_watchdog_sec),
+                    repeat=True,
+                    file=sys.stderr,
+                )
+                _log(f"stack watchdog enabled: {int(stack_watchdog_sec)}s")
+            except Exception as exc:
+                _log(f"stack watchdog setup skipped: {exc}")
+        try:
+            self._ensure_runtime_ready()
+            _log("runtime ready; entering avatar render coroutine")
+            result = asyncio.run(
+                self._predict_async(avatar_image=avatar_image, audio=audio, sample_steps_override=sample_steps)
+            )
+            _log("avatar render coroutine completed")
+            return result
+        finally:
+            if int(stack_watchdog_sec) > 0:
+                try:
+                    faulthandler.cancel_dump_traceback_later()
+                except Exception:
+                    pass
 
     async def _predict_async(self, *, avatar_image: Path, audio: Path, sample_steps_override: int = 0) -> Path:
         prediction_started_at = time.monotonic()
@@ -442,6 +472,7 @@ class Predictor(BasePredictor):
         if int(sample_steps_override or 0) > 0:
             sample_steps = int(sample_steps_override)
         sample_steps = int(max(1, min(40, int(sample_steps))))
+        _log(f"avatar render config resolved: sample_steps={sample_steps}")
         seed = int(os.environ.get("VLOGME_AVATAR_SEED", "420") or 420)
         face_restore = float(os.environ.get("VLOGME_AVATAR_FACE_RESTORE", "0.0") or 0.0)
         background_restore = float(os.environ.get("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0") or 0.0)
@@ -464,6 +495,7 @@ class Predictor(BasePredictor):
         audio_duration_sec = float(wav_duration_seconds(str(audio_path)))
         if audio_duration_sec <= 0.0:
             raise RuntimeError("Input audio is empty or could not be decoded")
+        _log(f"avatar inputs prepared: audio={audio_duration_sec:.2f}s run={run_root.name}")
 
         job_id = f"replicate_avatar_{int(time.time() * 1000)}"
         infer_frames = int(os.environ.get("INFER_FRAMES", "32") or 32)
