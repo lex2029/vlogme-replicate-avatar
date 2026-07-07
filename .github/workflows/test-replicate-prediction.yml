@@ -71,10 +71,6 @@ on:
         description: "Optional cold-start file-render motion-state mode: latent or decoded."
         required: false
         default: ""
-      audio_seconds:
-        description: "Generated smoke audio duration in seconds"
-        required: false
-        default: "2.0"
       face_restore:
         description: "Optional GFPGAN face restore override. -1 keeps deployment default."
         required: false
@@ -141,7 +137,6 @@ jobs:
             --infer-frames "${{ inputs.infer_frames }}" \
             --motion-file "${{ inputs.motion_file }}" \
             --motion-mode "${{ inputs.motion_mode }}" \
-            --audio-seconds "${{ inputs.audio_seconds }}" \
             --face-restore "${{ inputs.face_restore }}" \
             --face-restore-stage "${{ inputs.face_restore_stage }}" \
             --face-source-x2 "${{ inputs.face_source_x2 }}" \
