@@ -109,7 +109,7 @@ def _wait_for_vlogme_cancel(
     deadline = time.time() + max(10, int(wait_sec))
     last_seen = ("", -1, "", "")
     while time.time() < deadline:
-        status_doc = _json_request("GET", f"{api_root}/videos/{video_id}", token=token, timeout=60)
+        status_doc = _request("GET", f"{api_root}/videos/{video_id}", token=token, timeout=60)
         status = str(status_doc.get("status") or "").strip().lower()
         progress = int(float(status_doc.get("progress") or 0))
         stage = str(status_doc.get("stage") or "").strip()
