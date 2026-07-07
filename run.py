@@ -216,12 +216,13 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_PHASE_TIMING", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE", "frame_loop")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_REFRESH_CLIPS", "12")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85")
-    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "square_soft")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
@@ -373,6 +374,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_RAW_POST_VAE_PHASE_TIMING": os.environ.get("LIVE_RAW_POST_VAE_PHASE_TIMING", "1"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_AMP": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0"),
+        "LIVE_RAW_POST_VAE_FACE_AFFINE_CPU": os.environ.get("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1"),
         "LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE": os.environ.get(
             "LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE", "frame_loop"
@@ -384,7 +386,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             "LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075"
         ),
         "LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA": os.environ.get("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85"),
-        "LIVE_RAW_POST_VAE_FACE_MASK_MODE": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_MODE": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "square_soft"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED": os.environ.get(
             "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1"
         ),
@@ -679,6 +681,8 @@ class Predictor(BasePredictor):
             f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
             f"motion_mode={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE', '')} "
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
+            f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
+            f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"nvvfx_quality={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX_QUALITY', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
@@ -1007,6 +1011,8 @@ class Predictor(BasePredictor):
             f"fps={fps}->{output_fps} interpolation={stream_file_interpolation or 'off'} "
             f"face_restore={face_restore:.2f} background_restore={background_restore:.2f} "
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
+            f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
+            f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"audio={audio_duration_sec:.2f}s infer_frames={infer_frames} clips={num_clip} steps={sample_steps}"
         )

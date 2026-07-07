@@ -28,9 +28,11 @@ speech audio file and return a generated avatar MP4.
   and aligned 512x512 crop come from the native VAE frame, then the restored face
   is pasted into the x2/final PostVAE layer with the scaled inverse affine. This
   avoids feeding GFPGAN a bicubic x2 crop unless `face_source_x2=1` is explicitly
-  requested for A/B testing. The paste path uses the GFPGAN-compatible
-  inner-square mask and can keep PostVAE at the final MP4 size so the
-  face-restored output is not downscaled before encoding.
+  requested for A/B testing. The paste path uses OpenCV CPU affine like
+  facexlib and a softened full-square mask, which is the closest fast GPU path
+  to GFPGAN's official paste flow without running the parsing model per frame.
+  PostVAE stays at the final MP4 size so the face-restored output is not
+  downscaled before encoding.
   The public `predict()` input also accepts
   `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
