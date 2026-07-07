@@ -24,21 +24,15 @@ through Replicate.
 </p>
 
 <p align="center">
-  <video
-    src="assets/vlogme-avatar-demo-part-1.mp4"
-    width="240"
-    controls
-  ></video>
-  <video
-    src="assets/vlogme-avatar-demo-part-2.mp4"
-    width="240"
-    controls
-  ></video>
-  <video
-    src="assets/vlogme-avatar-demo-part-3.mp4"
-    width="240"
-    controls
-  ></video>
+  <a href="assets/vlogme-avatar-demo-part-1.mp4">
+    <img src="assets/vlogme-avatar-demo-part-1.gif" width="240" alt="VlogMe Avatar demo part 1">
+  </a>
+  <a href="assets/vlogme-avatar-demo-part-2.mp4">
+    <img src="assets/vlogme-avatar-demo-part-2.gif" width="240" alt="VlogMe Avatar demo part 2">
+  </a>
+  <a href="assets/vlogme-avatar-demo-part-3.mp4">
+    <img src="assets/vlogme-avatar-demo-part-3.gif" width="240" alt="VlogMe Avatar demo part 3">
+  </a>
 </p>
 
 <p align="center">
