@@ -315,7 +315,7 @@ class PostVAEEnhancer:
         self._upscale_x2_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"))
         self._face_source_x2_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"))
         self._face_restore_stage = self._normalize_face_restore_stage(
-            os.getenv("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first") or "native_first"
+            os.getenv("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "post_vae") or "post_vae"
         )
         self._face_restore_small_crop_enabled = bool(
             _env_flag("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")

@@ -243,14 +243,18 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_PHASE_TIMING", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0")
-    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "post_vae")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE", "frame_loop")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_REFRESH_CLIPS", "12")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85")
-    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "square_soft")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "ellipse")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_X", "0.30")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_Y", "0.34")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_CENTER_Y", "0.56")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_MASK_SOFTNESS", "0.18")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
@@ -406,7 +410,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_RAW_POST_VAE_FACE_RESTORE_AMP": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE": os.environ.get(
-            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first"
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "post_vae"
         ),
         "LIVE_RAW_POST_VAE_FACE_AFFINE_CPU": os.environ.get("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1"),
@@ -420,7 +424,11 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             "LIVE_RAW_POST_VAE_FACE_LAYOUT_CHANGE_THRESHOLD", "0.075"
         ),
         "LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA": os.environ.get("LIVE_RAW_POST_VAE_FACE_LAYOUT_EMA", "0.85"),
-        "LIVE_RAW_POST_VAE_FACE_MASK_MODE": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "square_soft"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_MODE": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "ellipse"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_X": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_X", "0.30"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_Y": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_RADIUS_Y", "0.34"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_CENTER_Y": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_CENTER_Y", "0.56"),
+        "LIVE_RAW_POST_VAE_FACE_MASK_SOFTNESS": os.environ.get("LIVE_RAW_POST_VAE_FACE_MASK_SOFTNESS", "0.18"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED": os.environ.get(
             "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1"
         ),
@@ -724,7 +732,7 @@ class Predictor(BasePredictor):
             "VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"
         )
         os.environ["LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE"] = os.environ.get(
-            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first"
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "post_vae"
         )
         os.environ["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
         os.environ["LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS"] = os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0")
