@@ -79,6 +79,10 @@ on:
         description: "Optional GFPGAN face restore override. -1 keeps deployment default."
         required: false
         default: "-1"
+      face_source_x2:
+        description: "Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop."
+        required: false
+        default: "-1"
       stream_file_interpolation:
         description: "Optional interpolation override: torch-rife, off, or empty for default."
         required: false
@@ -131,6 +135,7 @@ jobs:
             --motion-mode "${{ inputs.motion_mode }}" \
             --audio-seconds "${{ inputs.audio_seconds }}" \
             --face-restore "${{ inputs.face_restore }}" \
+            --face-source-x2 "${{ inputs.face_source_x2 }}" \
             --stream-file-interpolation "${{ inputs.stream_file_interpolation }}" \
             --output-fps "${{ inputs.output_fps }}" \
             --stream-file-nvvfx "${{ inputs.stream_file_nvvfx }}" \

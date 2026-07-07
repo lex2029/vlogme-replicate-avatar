@@ -122,6 +122,7 @@ def main() -> int:
     parser.add_argument("--motion-mode", default="")
     parser.add_argument("--audio-seconds", type=float, default=2.0)
     parser.add_argument("--face-restore", type=float, default=-1.0)
+    parser.add_argument("--face-source-x2", type=int, default=-1)
     parser.add_argument("--stream-file-interpolation", default="")
     parser.add_argument("--output-fps", type=float, default=0.0)
     parser.add_argument("--stream-file-nvvfx", type=int, default=-1)
@@ -173,6 +174,8 @@ def main() -> int:
         payload["input"]["motion_mode"] = str(args.motion_mode or "").strip()
     if float(args.face_restore) >= 0.0:
         payload["input"]["face_restore"] = float(args.face_restore)
+    if int(args.face_source_x2) in {0, 1}:
+        payload["input"]["face_source_x2"] = int(args.face_source_x2)
     if str(args.stream_file_interpolation or "").strip():
         payload["input"]["stream_file_interpolation"] = str(args.stream_file_interpolation or "").strip()
     if float(args.output_fps or 0.0) > 0.0:
