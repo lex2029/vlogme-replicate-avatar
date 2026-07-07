@@ -15,6 +15,10 @@ on:
         description: "Repo-relative README path for Replicate model page"
         required: false
         default: "docs/replicate-model-readme.md"
+      visibility:
+        description: 'Optional model visibility: "", "public", or "private"'
+        required: false
+        default: ""
 
 jobs:
   update_metadata:
@@ -32,4 +36,5 @@ jobs:
           python3 scripts/update_replicate_model_metadata.py \
             --model "${{ inputs.model_name }}" \
             --description "${{ inputs.description }}" \
-            --readme "${{ inputs.readme }}"
+            --readme "${{ inputs.readme }}" \
+            --visibility "${{ inputs.visibility }}"

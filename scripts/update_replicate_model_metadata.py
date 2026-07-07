@@ -46,6 +46,12 @@ def main() -> int:
     )
     parser.add_argument("--readme", default="docs/replicate-model-readme.md")
     parser.add_argument("--github-url", default="https://github.com/lex2029/vlogme-replicate-avatar")
+    parser.add_argument(
+        "--visibility",
+        choices=["", "public", "private"],
+        default="",
+        help="Optional model visibility. Replicate may require changing this in the web UI.",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
@@ -58,15 +64,19 @@ def main() -> int:
 
     readme_path = Path(args.readme)
     readme = readme_path.read_text(encoding="utf-8")
+    body = {
+        "description": str(args.description).strip(),
+        "readme": readme,
+        "github_url": str(args.github_url).strip(),
+    }
+    if str(args.visibility or "").strip():
+        body["visibility"] = str(args.visibility).strip()
+
     updated = _request(
         "PATCH",
         f"{API_ROOT}/models/{owner}/{name}",
         token=token,
-        body={
-            "description": str(args.description).strip(),
-            "readme": readme,
-            "github_url": str(args.github_url).strip(),
-        },
+        body=body,
     )
     print(
         json.dumps(
