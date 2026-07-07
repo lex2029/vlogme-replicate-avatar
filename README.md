@@ -25,14 +25,28 @@ through Replicate.
 
 <p align="center">
   <video
-    src="assets/vlogme-avatar-demo.mp4"
-    width="360"
+    src="assets/vlogme-avatar-demo-part-1.mp4"
+    width="240"
+    controls
+  ></video>
+  <video
+    src="assets/vlogme-avatar-demo-part-2.mp4"
+    width="240"
+    controls
+  ></video>
+  <video
+    src="assets/vlogme-avatar-demo-part-3.mp4"
+    width="240"
     controls
   ></video>
 </p>
 
 <p align="center">
-  <a href="assets/vlogme-avatar-demo.mp4">Open the demo video</a>
+  <a href="assets/vlogme-avatar-demo-part-1.mp4">Part 1</a>
+  ·
+  <a href="assets/vlogme-avatar-demo-part-2.mp4">Part 2</a>
+  ·
+  <a href="assets/vlogme-avatar-demo-part-3.mp4">Part 3</a>
 </p>
 
 ## What It Does
@@ -101,7 +115,7 @@ See [`examples/`](examples/) for a complete runnable script.
 ├── run.py                        # Heavy GPU avatar predictor interface
 ├── cog.yaml                      # Heavy GPU Cog image
 ├── runtime/SmartBlog-Live/       # Vendored avatar runtime snapshot
-├── assets/                       # Public README demo video
+├── assets/                       # Public README demo video parts
 ├── test_assets/                  # Small public sample image/audio inputs
 ├── examples/                     # Public API examples
 ├── docs/replicate-model-readme.md
