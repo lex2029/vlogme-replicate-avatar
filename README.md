@@ -48,10 +48,9 @@ speech audio file and return a generated avatar MP4.
   `VLOGME_AVATAR_ENABLE_COMPILE=true`; it is restricted to the stable head
   region and skips the dynamic live KV-cache/rope paths.
 - The heavy GPU test only needs `hf_token` if runtime weights must be pulled
-  from Hugging Face. The bridge needs a VlogMe API token, passed as the
-  `vlogme_api_token` Replicate Secret input or, for private/internal runtime
-  environments that support secrets, exposed as `VLOGME_API_TOKEN`. Do not bake
-  that token into the image.
+  from Hugging Face. The bridge needs `VLOGME_API_TOKEN` configured in the
+  Replicate deployment environment. Do not expose it as a public model input and
+  do not bake it into the image.
 
 ## First Local Test
 
@@ -64,9 +63,13 @@ cog run -i avatar_image=@/path/to/avatar.png -i audio=@/path/to/speech.wav
 ```
 
 The first test should use an already prepared speech WAV/MP3. Text-to-speech can
-be added later as a separate optional path. The public model interface is kept
-simple on purpose: image in, audio in, MP4 out. Prompting is internal for now and
-can later be generated from the image with Gemini.
+be added later as a separate optional path. The public bridge interface is kept
+simple on purpose: image in, audio in, optional subtitles toggle, MP4 out.
+Prompting is internal for now and can later be generated from the image with
+Gemini. The bridge always requests a vertical 9:16 render. VlogMe accepts almost
+any reference photo, then uses the center of the image for the vertical crop, so
+faces/presenters should be near the middle. Replicate bridge generations always
+include the top watermark `Created by VlogMe.AI`.
 
 ## Replicate Publish
 
@@ -88,19 +91,21 @@ For the bridge image, use the same workflow with:
 The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
 
 - `REPLICATE_API_TOKEN` for the Replicate API.
-- `VLOGME_API_TOKEN` for the VlogMe public API. Use a paid/internal VlogMe API
-  token from `/settings/api`; the bridge submits through
-  `POST /api/public/v1/videos` and polls `GET /api/public/v1/videos/:id`.
+- A Replicate deployment, for example `lex2029/vlogme-avatar-bridge-cpu`, with
+  `VLOGME_API_TOKEN` configured as an environment secret. The bridge submits
+  through `POST /api/public/v1/videos` and polls
+  `GET /api/public/v1/videos/:id`.
+- The GitHub Actions secret `VLOGME_API_TOKEN` is only needed when the smoke
+  workflow verifies cooperative cancellation against the VlogMe API. It is not
+  sent as a public Replicate prediction input.
 - For cancellation handoff, pass the VlogMe Replicate webhook URL when creating
   predictions:
   `https://vlogme.ai/api/public/v1/replicate/webhook`, with events
   `logs,completed`. The smoke workflow exposes this as `webhook_url` and
   `webhook_events`.
-- The bridge exposes `live_subtitles` and `watermark_enabled` toggles. Watermark
-  defaults to on and uses `Created by VlogMe.AI` when no custom
-  `watermark_text` is supplied. Passing `watermark_enabled=false` only disables
-  it when the deployment explicitly sets `VLOGME_BRIDGE_ALLOW_WATERMARK_DISABLE=1`;
-  leave that off for free generations.
+- The bridge exposes `live_subtitles` as the only user-facing render toggle.
+  Subtitles are on by default and can be disabled. Aspect ratio is always
+  vertical `9:16`, and the top watermark is always `Created by VlogMe.AI`.
 
 The `Cancel Active Replicate Predictions` workflow scans recent Replicate
 predictions and cancels active `starting`/`processing` jobs for a model or

@@ -8,9 +8,9 @@ on:
         required: true
         default: "lex2029/vlogme-avatar-bridge"
       deployment:
-        description: 'Optional bridge deployment, for example "lex2029/vlogme-avatar-bridge-cpu"'
+        description: 'Bridge deployment with VLOGME_API_TOKEN configured'
         required: false
-        default: ""
+        default: "lex2029/vlogme-avatar-bridge-cpu"
       image:
         description: "Repo-relative avatar image path"
         required: false
@@ -32,29 +32,13 @@ on:
         required: false
         default: "15"
       vlogme_api_url:
-        description: "VlogMe API root"
+        description: "VlogMe API root used only for cancellation verification"
         required: false
         default: "https://vlogme.ai/api/public/v1"
-      aspect_ratio:
-        description: "VlogMe output aspect ratio"
-        required: false
-        default: "9:16"
-      face_restore:
-        description: "Face restore strength. -1 keeps VlogMe defaults."
-        required: false
-        default: "-1"
       live_subtitles:
         description: "1 enables subtitles, 0 disables."
         required: false
         default: "1"
-      watermark_enabled:
-        description: "1 enables watermark. 0 disables only when the deployment allows no-watermark mode."
-        required: false
-        default: "1"
-      watermark_text:
-        description: "Watermark text when watermark is enabled."
-        required: false
-        default: "Created by VlogMe.AI"
       cancel_after_job_accepted:
         description: "1 cancels the prediction after VlogMe job id appears and verifies VlogMe cancellation"
         required: false
@@ -96,11 +80,7 @@ jobs:
             --timeout-sec "${{ inputs.timeout_sec }}" \
             --poll-sec "${{ inputs.poll_sec }}" \
             --vlogme-api-url "${{ inputs.vlogme_api_url }}" \
-            --aspect-ratio "${{ inputs.aspect_ratio }}" \
-            --face-restore "${{ inputs.face_restore }}" \
             --live-subtitles "${{ inputs.live_subtitles }}" \
-            --watermark-enabled "${{ inputs.watermark_enabled }}" \
-            --watermark-text "${{ inputs.watermark_text }}" \
             --cancel-after-job-accepted "${{ inputs.cancel_after_job_accepted }}" \
             --cancel-wait-sec "${{ inputs.cancel_wait_sec }}" \
             --webhook-url "${{ inputs.webhook_url }}" \

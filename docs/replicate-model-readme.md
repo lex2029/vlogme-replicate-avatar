@@ -1,27 +1,25 @@
 # VlogMe Avatar
 
-Create a talking-avatar video from a portrait image and a speech audio file.
+Create a vertical talking-avatar video from a photo and a speech audio file.
 
-The model is designed for product demos, explainers, social clips, onboarding videos, and narrated presenter content. Upload a clear face image and a spoken audio track; the output is an MP4 video where the person speaks the audio.
+The model is designed for product demos, explainers, social clips, onboarding videos, and narrated presenter content. Upload a face or presenter image and a spoken audio track; the output is a vertical 9:16 MP4 video where the person speaks the audio.
+
+You can upload almost any photo. VlogMe uses the center of the image and crops it into a vertical 9:16 frame, so results are best when the face or presenter is near the middle of the image.
 
 ## Inputs
 
-- `avatar_image`: portrait or presenter reference image.
+- `avatar_image`: portrait or presenter reference image. The output is always center-cropped to vertical 9:16.
 - `audio`: speech audio to animate.
-- `live_subtitles`: burn word-level subtitles into the final video.
-- `watermark_enabled`: keep the VlogMe watermark on for free/default generations.
-- `watermark_text`: optional watermark text. Defaults to `Created by VlogMe.AI`.
-- `aspect_ratio`: `9:16`, `16:9`, or `1:1`.
-- `face_restore`: optional face restoration strength. Leave at `-1` to use VlogMe defaults.
-- `video_prompt` and `video_negative_prompt`: optional motion/style guidance.
+- `live_subtitles`: burn word-level subtitles into the final video. Enabled by default; you can turn it off.
 
 ## Watermark policy
 
-Free/default generations include the VlogMe watermark. Paid/no-watermark workflows can be enabled separately by VlogMe.
+Every Replicate generation includes a top watermark that says `Created by VlogMe.AI`.
 
 ## Tips for best results
 
 - Use a clear, front-facing or three-quarter portrait.
+- Keep the face or presenter near the center of the photo, because the final video is always a vertical 9:16 center crop.
 - Avoid tiny faces, heavy occlusion, extreme side profiles, or very low-resolution images.
 - Use clean speech audio with minimal music or background noise.
 - For subtitles, provide real spoken audio; non-speech tones or music will not produce useful captions.

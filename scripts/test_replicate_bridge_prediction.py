@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 API_ROOT = "https://api.replicate.com/v1"
-DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
+TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 VLOGME_JOB_ACCEPTED_RE = re.compile(
     r"VlogMe job accepted:\s*id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.IGNORECASE,
@@ -143,21 +143,7 @@ def main() -> int:
     parser.add_argument("--timeout-sec", type=int, default=1800)
     parser.add_argument("--poll-sec", type=int, default=15)
     parser.add_argument("--vlogme-api-url", default="https://vlogme.ai/api/public/v1")
-    parser.add_argument("--title", default="Replicate bridge smoke test")
-    parser.add_argument("--aspect-ratio", default="9:16", choices=["9:16", "16:9", "1:1"])
-    parser.add_argument("--face-restore", type=float, default=-1.0)
     parser.add_argument("--live-subtitles", type=int, default=1)
-    parser.add_argument(
-        "--watermark-enabled",
-        type=int,
-        default=1,
-        help="1 enables the final video watermark, 0 disables it for paid/no-watermark tests.",
-    )
-    parser.add_argument(
-        "--watermark-text",
-        default=os.environ.get("VLOGME_BRIDGE_DEFAULT_WATERMARK_TEXT", DEFAULT_WATERMARK_TEXT),
-        help="Watermark text to pass when --watermark-enabled=1.",
-    )
     parser.add_argument(
         "--cancel-after-job-accepted",
         type=int,
@@ -186,7 +172,7 @@ def main() -> int:
     if not replicate_token:
         raise RuntimeError("Missing REPLICATE_API_TOKEN")
     vlogme_token = os.environ.get("VLOGME_API_TOKEN", "").strip()
-    if not vlogme_token:
+    if args.cancel_after_job_accepted and not vlogme_token:
         raise RuntimeError("Missing VLOGME_API_TOKEN")
 
     root = Path(__file__).resolve().parents[1]
@@ -204,17 +190,9 @@ def main() -> int:
         "input": {
             "avatar_image": _data_uri(image_path, "image/jpeg"),
             "audio": _data_uri(audio_path, "audio/wav"),
-            "vlogme_api_token": vlogme_token,
-            "vlogme_api_url": str(args.vlogme_api_url).strip(),
-            "title": str(args.title).strip() or "Replicate bridge smoke test",
-            "aspect_ratio": args.aspect_ratio,
             "live_subtitles": bool(args.live_subtitles),
-            "face_restore": float(args.face_restore),
-            "watermark_enabled": bool(args.watermark_enabled),
         },
     }
-    if bool(args.watermark_enabled) and str(args.watermark_text or "").strip():
-        payload["input"]["watermark_text"] = str(args.watermark_text).strip()
     webhook_url = str(args.webhook_url or "").strip()
     if webhook_url:
         events = [event.strip() for event in str(args.webhook_events or "").split(",") if event.strip()]

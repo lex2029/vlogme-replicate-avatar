@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path as SysPath
 from typing import Any
 
-from cog import BasePredictor, Input, Path, Secret
+from cog import BasePredictor, Input, Path
 
 try:
     from cog import CancelationException
@@ -21,7 +21,11 @@ except Exception:
 
 
 DEFAULT_VLOGME_API_URL = "https://vlogme.ai/api/public/v1"
+DEFAULT_TITLE = "Replicate avatar render"
+DEFAULT_ASPECT_RATIO = "9:16"
 DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
+DEFAULT_TIMEOUT_SEC = 1740
+DEFAULT_POLL_INTERVAL_SEC = 10
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 TERMINAL_FAILURE = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
 
@@ -32,17 +36,6 @@ class _ReplicatePredictionCancelled(RuntimeError):
 
 def _log(message: str) -> None:
     print(f"[replicate-avatar-bridge] {message}", flush=True)
-
-
-def _secret_value(secret: Secret | None) -> str:
-    if secret is None:
-        return ""
-    return (secret.get_secret_value() or "").strip()
-
-
-def _env_flag(name: str, default: str = "0") -> bool:
-    value = os.environ.get(name, default)
-    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _guess_mime(path: SysPath, fallback: str) -> str:
@@ -158,90 +151,35 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        avatar_image: Path = Input(description="Face/avatar reference image"),
+        avatar_image: Path = Input(
+            description=(
+                "Reference image. Almost any photo is accepted; VlogMe centers "
+                "and crops it for a vertical 9:16 avatar video."
+            )
+        ),
         audio: Path = Input(description="Speech audio to animate"),
-        vlogme_api_token: Secret | None = Input(
-            description="VlogMe API token. Use a Secret input or VLOGME_API_TOKEN env var.",
-            default=None,
-        ),
-        vlogme_api_url: str = Input(
-            description="VlogMe public API root",
-            default=DEFAULT_VLOGME_API_URL,
-        ),
-        title: str = Input(
-            description="Title for the VlogMe render job",
-            default="Replicate avatar render",
-        ),
-        aspect_ratio: str = Input(
-            description="Output aspect ratio",
-            default="9:16",
-            choices=["9:16", "16:9", "1:1"],
-        ),
         live_subtitles: bool = Input(
-            description="Burn/live subtitle preference for the VlogMe render",
+            description="Burn word-level subtitles into the final video",
             default=True,
-        ),
-        face_restore: float = Input(
-            description="Optional face restore strength 0.0..1.0. -1 keeps VlogMe defaults.",
-            default=-1.0,
-        ),
-        video_prompt: str = Input(
-            description="Optional render prompt override",
-            default="",
-        ),
-        video_negative_prompt: str = Input(
-            description="Optional negative prompt override",
-            default="",
-        ),
-        watermark_text: str = Input(
-            description="Optional watermark text. Empty uses the VlogMe brand watermark when watermark_enabled is true.",
-            default="",
-        ),
-        watermark_enabled: bool = Input(
-            description="Burn a watermark into the final video. Keep true for free generations; paid callers can set false.",
-            default=True,
-        ),
-        timeout_sec: int = Input(
-            description="Maximum time to wait for VlogMe to finish",
-            default=1740,
-        ),
-        poll_interval_sec: int = Input(
-            description="Polling interval while VlogMe worker renders",
-            default=10,
         ),
     ) -> Path:
-        token = _secret_value(vlogme_api_token) or os.environ.get("VLOGME_API_TOKEN", "").strip()
+        token = os.environ.get("VLOGME_API_TOKEN", "").strip()
         if not token:
-            raise RuntimeError("Missing VlogMe API token: pass vlogme_api_token as a Secret input")
+            raise RuntimeError("Missing VLOGME_API_TOKEN in the Replicate deployment environment")
 
-        api_root = str(vlogme_api_url or DEFAULT_VLOGME_API_URL).strip().rstrip("/")
+        api_root = os.environ.get("VLOGME_API_URL", DEFAULT_VLOGME_API_URL).strip().rstrip("/")
         if not api_root:
-            raise RuntimeError("vlogme_api_url is empty")
+            raise RuntimeError("VLOGME_API_URL is empty")
 
-        _log("submitting VlogMe render job")
+        _log("submitting VlogMe render job: vertical_9_16=1 watermark_top=Created by VlogMe.AI")
         create_body: dict[str, Any] = {
-            "title": str(title or "Replicate avatar render").strip() or "Replicate avatar render",
+            "title": os.environ.get("VLOGME_BRIDGE_DEFAULT_TITLE", DEFAULT_TITLE).strip() or DEFAULT_TITLE,
             "portrait_base64": _data_uri(avatar_image, "image/jpeg"),
             "audio_base64": _data_uri(audio, "audio/wav"),
-            "aspect_ratio": aspect_ratio,
+            "aspect_ratio": DEFAULT_ASPECT_RATIO,
             "live_subtitles": bool(live_subtitles),
+            "watermark_text": DEFAULT_WATERMARK_TEXT,
         }
-        if 0.0 <= float(face_restore) <= 1.0:
-            create_body["face_restore"] = float(face_restore)
-        if str(video_prompt or "").strip():
-            create_body["video_prompt"] = str(video_prompt).strip()
-        if str(video_negative_prompt or "").strip():
-            create_body["video_negative_prompt"] = str(video_negative_prompt).strip()
-        watermark_disable_allowed = _env_flag("VLOGME_BRIDGE_ALLOW_WATERMARK_DISABLE", "0")
-        should_apply_watermark = bool(watermark_enabled) or not watermark_disable_allowed
-        if not bool(watermark_enabled) and not watermark_disable_allowed:
-            _log("watermark disable requested but not allowed for this bridge deployment")
-        if should_apply_watermark:
-            create_body["watermark_text"] = (
-                str(watermark_text or "").strip()
-                or os.environ.get("VLOGME_BRIDGE_DEFAULT_WATERMARK_TEXT", "").strip()
-                or DEFAULT_WATERMARK_TEXT
-            )
 
         created = _json_request("POST", f"{api_root}/videos", token=token, body=create_body)
         video_id = str(created.get("id") or "").strip()
@@ -254,8 +192,8 @@ class Predictor(BasePredictor):
             f"estimated_seconds={created.get('estimated_seconds', '')}"
         )
 
-        deadline = time.time() + max(30, int(timeout_sec or 0))
-        poll_interval = max(2, min(60, int(poll_interval_sec or 10)))
+        deadline = time.time() + DEFAULT_TIMEOUT_SEC
+        poll_interval = DEFAULT_POLL_INTERVAL_SEC
         last_status = ""
         last_progress = -1
 
