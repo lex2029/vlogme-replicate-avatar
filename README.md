@@ -49,10 +49,10 @@ speech audio file and return a generated avatar MP4.
   region and skips the dynamic live KV-cache/rope paths.
 - The heavy GPU test only needs `hf_token` if runtime weights must be pulled
   from Hugging Face. The bridge needs `VLOGME_API_TOKEN` configured in the
-  Replicate deployment environment. Until Replicate runtime secrets are
-  configured for the deployment, the predictor keeps an optional
-  `vlogme_api_token` Secret input as a private smoke-test fallback. Do not bake
-  that token into the image.
+  Replicate runtime. The bridge image publish workflow creates
+  `.replicate_runtime/vlogme_api_token` from the GitHub Actions secret before
+  `cog push`, so the public Replicate schema does not expose a token input.
+  The generated file is ignored by git and must never be committed.
 
 ## First Local Test
 
@@ -94,14 +94,15 @@ The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
 
 - `REPLICATE_API_TOKEN` for the Replicate API.
 - A Replicate deployment, for example `lex2029/vlogme-avatar-bridge-cpu`, with
-  `VLOGME_API_TOKEN` configured as an environment secret. The bridge submits
-  through `POST /api/public/v1/videos` and polls
-  `GET /api/public/v1/videos/:id`.
+  a bridge image published by the `Push to Replicate` workflow. That workflow
+  creates the runtime token file from the GitHub Actions secret before `cog
+  push`, so smoke predictions do not need a token input. The bridge submits
+  through `POST /api/public/v1/videos` and polls `GET
+  /api/public/v1/videos/:id`.
 - The GitHub Actions secret `VLOGME_API_TOKEN` is only needed when the smoke
-  workflow submits private bridge smoke predictions or verifies cooperative
-  cancellation against the VlogMe API. Once the Replicate deployment provides
-  `VLOGME_API_TOKEN` at runtime, remove the fallback Secret input from the public
-  schema.
+  workflow verifies cooperative cancellation against the VlogMe API. The bridge
+  publish workflow also uses that secret to create the runtime token file inside
+  the Replicate image.
 - For cancellation handoff, pass the VlogMe Replicate webhook URL when creating
   predictions:
   `https://vlogme.ai/api/public/v1/replicate/webhook`, with events

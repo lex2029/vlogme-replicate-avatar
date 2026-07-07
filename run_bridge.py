@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path as SysPath
 from typing import Any
 
-from cog import BasePredictor, Input, Path, Secret
+from cog import BasePredictor, Input, Path
 
 try:
     from cog import CancelationException
@@ -26,6 +26,7 @@ DEFAULT_ASPECT_RATIO = "9:16"
 DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
 DEFAULT_TIMEOUT_SEC = 1740
 DEFAULT_POLL_INTERVAL_SEC = 10
+DEFAULT_TOKEN_FILE = ".replicate_runtime/vlogme_api_token"
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 TERMINAL_FAILURE = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
 
@@ -38,12 +39,6 @@ def _log(message: str) -> None:
     print(f"[replicate-avatar-bridge] {message}", flush=True)
 
 
-def _secret_value(secret: Secret | None) -> str:
-    if secret is None:
-        return ""
-    return (secret.get_secret_value() or "").strip()
-
-
 def _guess_mime(path: SysPath, fallback: str) -> str:
     guessed, _ = mimetypes.guess_type(str(path))
     return guessed or fallback
@@ -54,6 +49,26 @@ def _data_uri(path: Path, fallback_mime: str) -> str:
     mime = _guess_mime(src, fallback_mime)
     encoded = base64.b64encode(src.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{encoded}"
+
+
+def _read_token_file() -> str:
+    explicit = os.environ.get("VLOGME_API_TOKEN_FILE", "").strip()
+    candidates = [
+        explicit,
+        str(SysPath(__file__).resolve().parent / DEFAULT_TOKEN_FILE),
+        f"/src/{DEFAULT_TOKEN_FILE}",
+    ]
+    for candidate in candidates:
+        path_s = str(candidate or "").strip()
+        if not path_s:
+            continue
+        path = SysPath(path_s)
+        try:
+            if path.is_file():
+                return path.read_text(encoding="utf-8").strip()
+        except Exception:
+            continue
+    return ""
 
 
 def _json_request(
@@ -168,20 +183,10 @@ class Predictor(BasePredictor):
             description="Burn word-level subtitles into the final video",
             default=True,
         ),
-        vlogme_api_token: Secret | None = Input(
-            description=(
-                "Internal VlogMe access token. Official VlogMe deployments "
-                "should provide VLOGME_API_TOKEN in the runtime environment."
-            ),
-            default=None,
-        ),
     ) -> Path:
-        token = os.environ.get("VLOGME_API_TOKEN", "").strip() or _secret_value(vlogme_api_token)
+        token = os.environ.get("VLOGME_API_TOKEN", "").strip() or _read_token_file()
         if not token:
-            raise RuntimeError(
-                "Missing VLOGME_API_TOKEN in the Replicate deployment environment "
-                "or vlogme_api_token Secret input"
-            )
+            raise RuntimeError("Missing VLOGME_API_TOKEN runtime secret")
 
         api_root = os.environ.get("VLOGME_API_URL", DEFAULT_VLOGME_API_URL).strip().rstrip("/")
         if not api_root:

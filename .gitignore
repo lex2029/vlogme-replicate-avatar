@@ -18,6 +18,7 @@ runtime/SmartBlog-Live/.venv/
 # Never commit secrets or model weights.
 .env
 .env.*
+.replicate_runtime/
 config/worker_secrets.conf
 runtime/SmartBlog-Live/config/worker_secrets.conf
 weights/

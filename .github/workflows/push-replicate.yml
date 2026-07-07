@@ -34,12 +34,20 @@ jobs:
       - name: Select Cog config
         env:
           COG_CONFIG: ${{ inputs.cog_config }}
+          VLOGME_API_TOKEN: ${{ secrets.VLOGME_API_TOKEN }}
         run: |
           case "$COG_CONFIG" in
             cog.yaml)
               echo "Using default cog.yaml"
               ;;
             cog.bridge.yaml)
+              if [ -z "$VLOGME_API_TOKEN" ]; then
+                echo "Missing VLOGME_API_TOKEN GitHub Actions secret for bridge build" >&2
+                exit 1
+              fi
+              mkdir -p .replicate_runtime
+              printf '%s' "$VLOGME_API_TOKEN" > .replicate_runtime/vlogme_api_token
+              chmod 600 .replicate_runtime/vlogme_api_token
               cp cog.bridge.yaml cog.yaml
               echo "Using bridge Cog config"
               ;;
