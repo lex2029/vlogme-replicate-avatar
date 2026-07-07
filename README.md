@@ -49,8 +49,10 @@ speech audio file and return a generated avatar MP4.
   region and skips the dynamic live KV-cache/rope paths.
 - The heavy GPU test only needs `hf_token` if runtime weights must be pulled
   from Hugging Face. The bridge needs `VLOGME_API_TOKEN` configured in the
-  Replicate deployment environment. Do not expose it as a public model input and
-  do not bake it into the image.
+  Replicate deployment environment. Until Replicate runtime secrets are
+  configured for the deployment, the predictor keeps an optional
+  `vlogme_api_token` Secret input as a private smoke-test fallback. Do not bake
+  that token into the image.
 
 ## First Local Test
 
@@ -96,8 +98,10 @@ The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
   through `POST /api/public/v1/videos` and polls
   `GET /api/public/v1/videos/:id`.
 - The GitHub Actions secret `VLOGME_API_TOKEN` is only needed when the smoke
-  workflow verifies cooperative cancellation against the VlogMe API. It is not
-  sent as a public Replicate prediction input.
+  workflow submits private bridge smoke predictions or verifies cooperative
+  cancellation against the VlogMe API. Once the Replicate deployment provides
+  `VLOGME_API_TOKEN` at runtime, remove the fallback Secret input from the public
+  schema.
 - For cancellation handoff, pass the VlogMe Replicate webhook URL when creating
   predictions:
   `https://vlogme.ai/api/public/v1/replicate/webhook`, with events

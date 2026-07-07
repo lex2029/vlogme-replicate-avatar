@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path as SysPath
 from typing import Any
 
-from cog import BasePredictor, Input, Path
+from cog import BasePredictor, Input, Path, Secret
 
 try:
     from cog import CancelationException
@@ -36,6 +36,12 @@ class _ReplicatePredictionCancelled(RuntimeError):
 
 def _log(message: str) -> None:
     print(f"[replicate-avatar-bridge] {message}", flush=True)
+
+
+def _secret_value(secret: Secret | None) -> str:
+    if secret is None:
+        return ""
+    return (secret.get_secret_value() or "").strip()
 
 
 def _guess_mime(path: SysPath, fallback: str) -> str:
@@ -162,10 +168,20 @@ class Predictor(BasePredictor):
             description="Burn word-level subtitles into the final video",
             default=True,
         ),
+        vlogme_api_token: Secret | None = Input(
+            description=(
+                "Internal VlogMe access token. Official VlogMe deployments "
+                "should provide VLOGME_API_TOKEN in the runtime environment."
+            ),
+            default=None,
+        ),
     ) -> Path:
-        token = os.environ.get("VLOGME_API_TOKEN", "").strip()
+        token = os.environ.get("VLOGME_API_TOKEN", "").strip() or _secret_value(vlogme_api_token)
         if not token:
-            raise RuntimeError("Missing VLOGME_API_TOKEN in the Replicate deployment environment")
+            raise RuntimeError(
+                "Missing VLOGME_API_TOKEN in the Replicate deployment environment "
+                "or vlogme_api_token Secret input"
+            )
 
         api_root = os.environ.get("VLOGME_API_URL", DEFAULT_VLOGME_API_URL).strip().rstrip("/")
         if not api_root:

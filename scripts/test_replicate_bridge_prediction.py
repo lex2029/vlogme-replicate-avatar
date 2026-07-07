@@ -172,7 +172,7 @@ def main() -> int:
     if not replicate_token:
         raise RuntimeError("Missing REPLICATE_API_TOKEN")
     vlogme_token = os.environ.get("VLOGME_API_TOKEN", "").strip()
-    if args.cancel_after_job_accepted and not vlogme_token:
+    if not vlogme_token:
         raise RuntimeError("Missing VLOGME_API_TOKEN")
 
     root = Path(__file__).resolve().parents[1]
@@ -191,6 +191,7 @@ def main() -> int:
             "avatar_image": _data_uri(image_path, "image/jpeg"),
             "audio": _data_uri(audio_path, "audio/wav"),
             "live_subtitles": bool(args.live_subtitles),
+            "vlogme_api_token": vlogme_token,
         },
     }
     webhook_url = str(args.webhook_url or "").strip()
