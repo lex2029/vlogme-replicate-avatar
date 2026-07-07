@@ -1,0 +1,35 @@
+name: Update Replicate Model Metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Replicate model name, for example "lex2029/vlogme-avatar-bridge"'
+        required: true
+        default: "lex2029/vlogme-avatar-bridge"
+      description:
+        description: "Short model description"
+        required: false
+        default: "Create a talking-avatar video from a portrait image and speech audio."
+      readme:
+        description: "Repo-relative README path for Replicate model page"
+        required: false
+        default: "docs/replicate-model-readme.md"
+
+jobs:
+  update_metadata:
+    name: Update Replicate Model Metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update model metadata
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python3 scripts/update_replicate_model_metadata.py \
+            --model "${{ inputs.model_name }}" \
+            --description "${{ inputs.description }}" \
+            --readme "${{ inputs.readme }}"
