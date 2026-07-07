@@ -24,13 +24,12 @@ speech audio file and return a generated avatar MP4.
   cards should shard DiT/denoise. The default first-pass Replicate canvas is
   portrait `704*384` (Wan/model order is height*width), with 6 inference steps
   and PostVAE/GFPGAN face restore disabled. When face restore is explicitly
-  enabled, file rendering follows the GFPGAN-style source path: face detection
-  and aligned 512x512 crop come from the native VAE frame, then the restored face
-  is pasted into the x2/final PostVAE layer with the scaled inverse affine. This
-  avoids feeding GFPGAN a bicubic x2 crop unless `face_source_x2=1` is explicitly
-  requested for A/B testing. The paste path uses OpenCV CPU affine like
-  facexlib and a softened full-square mask, which is the closest fast GPU path
-  to GFPGAN's official paste flow without running the parsing model per frame.
+  enabled, file rendering restores and pastes the aligned 512x512 GFPGAN crop on
+  the native VAE frame first, then sends that result through x2/final resize. This
+  avoids inverse-warping the restored crop directly into the enlarged layer, which
+  was prone to blocky face and hair artifacts. The older post-VAE paste path can
+  still be A/B tested with `face_restore_stage=post_vae` and `face_source_x2=1`
+  if needed.
   PostVAE stays at the final MP4 size so the face-restored output is not
   downscaled before encoding.
   The public `predict()` input also accepts
@@ -38,7 +37,7 @@ speech audio file and return a generated avatar MP4.
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
   `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. For GFPGAN
   diagnostics only, pass `debug_face_crops=1`; the prediction returns a zip
-  containing `avatar.mp4` plus aligned/restored face crop JPEGs.
+  containing `avatar.mp4` plus aligned/restored/composited face crop JPEGs.
 - A100 acceleration defaults are conservative: BF16/TF32 enabled, merged
   LiveAvatar checkpoint enabled, cuDNN SDPA allowed, external FlashAttention
   disabled, FP8 off, and `torch.compile` off. Compile can be tested with

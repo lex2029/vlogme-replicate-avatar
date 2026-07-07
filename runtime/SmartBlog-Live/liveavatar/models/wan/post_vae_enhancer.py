@@ -314,6 +314,9 @@ class PostVAEEnhancer:
         self._trt_finite_check_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_TRT_FINITE_CHECK", "0"))
         self._upscale_x2_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"))
         self._face_source_x2_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"))
+        self._face_restore_stage = self._normalize_face_restore_stage(
+            os.getenv("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first") or "native_first"
+        )
         self._face_restore_small_crop_enabled = bool(
             _env_flag("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_ENABLED", "1")
         )
@@ -520,6 +523,15 @@ class PostVAEEnhancer:
         return "inner_square"
 
     @staticmethod
+    def _normalize_face_restore_stage(stage: object) -> str:
+        raw = str(stage or "native_first").strip().lower().replace("-", "_")
+        if raw in {"native", "native_first", "pre_upscale", "preupscale", "vae", "vae_native"}:
+            return "native_first"
+        if raw in {"post", "post_vae", "x2", "layer", "post_upscale", "postupscale"}:
+            return "post_vae"
+        return "native_first"
+
+    @staticmethod
     def _erode_mask(mask: torch.Tensor, kernel_size: int) -> torch.Tensor:
         kernel = int(max(1, kernel_size))
         if kernel <= 1:
@@ -550,7 +562,14 @@ class PostVAEEnhancer:
             (float(sigma), float(sigma)),
         ).clamp(0, 1).contiguous()
 
-    def _debug_save_face_crops(self, *, aligned: torch.Tensor, restored: torch.Tensor, prefix: str) -> None:
+    def _debug_save_face_crops(
+        self,
+        *,
+        aligned: torch.Tensor,
+        restored: torch.Tensor,
+        prefix: str,
+        composited: torch.Tensor | None = None,
+    ) -> None:
         if not bool(getattr(self, "_debug_face_crops_enabled", False)):
             return
         remaining = int(getattr(self, "_debug_face_crops_max", 6)) - int(getattr(self, "_debug_face_crops_saved", 0))
@@ -565,10 +584,20 @@ class PostVAEEnhancer:
             debug_dir.mkdir(parents=True, exist_ok=True)
             aligned_cpu = aligned.detach().to(dtype=torch.float32).clamp(0.0, 1.0).cpu()
             restored_cpu = restored.detach().to(dtype=torch.float32).clamp(0.0, 1.0).cpu()
+            composited_cpu = (
+                composited.detach().to(dtype=torch.float32).clamp(0.0, 1.0).cpu()
+                if composited is not None
+                else None
+            )
             count = min(int(remaining), int(aligned_cpu.shape[0]), int(restored_cpu.shape[0]))
+            if composited_cpu is not None:
+                count = min(int(count), int(composited_cpu.shape[0]))
             for batch_idx in range(int(count)):
                 save_idx = int(getattr(self, "_debug_face_crops_saved", 0))
-                for label, tensor in (("aligned", aligned_cpu), ("restored", restored_cpu)):
+                tensors: list[tuple[str, torch.Tensor]] = [("aligned", aligned_cpu), ("restored", restored_cpu)]
+                if composited_cpu is not None:
+                    tensors.append(("composited", composited_cpu))
+                for label, tensor in tensors:
                     arr = (
                         tensor[int(batch_idx)]
                         .mul(255.0)
@@ -1100,19 +1129,15 @@ class PostVAEEnhancer:
                 profile["crop_sec"] += _phase_dt(crop_t0, device=self.device)
                 if overlay_mode == "restored":
                     restore_t0 = time.perf_counter()
-                    face_patch = self._run_face_restore_model(
+                    restored_face = self._run_face_restore_model(
                         face_enhancer,
                         original_crop,
                         face_restore=float(face_restore),
                     )
                     profile["restore_sec"] += _phase_dt(restore_t0, device=self.device)
-                    if torch.isnan(face_patch).any() or torch.isinf(face_patch).any():
+                    if torch.isnan(restored_face).any() or torch.isinf(restored_face).any():
                         continue
-                    self._debug_save_face_crops(
-                        aligned=original_crop,
-                        restored=face_patch,
-                        prefix=str(overlay_mode or "face"),
-                    )
+                    face_patch = restored_face
                     if blend < 1.0:
                         blend_t0 = time.perf_counter()
                         face_patch = (face_patch * blend) + (original_crop * (1.0 - blend))
@@ -1132,6 +1157,29 @@ class PostVAEEnhancer:
                 composite_t0 = time.perf_counter()
                 result = (result * (1.0 - mask)) + (pasted * mask)
                 profile["composite_sec"] += _phase_dt(composite_t0, device=self.device)
+                if overlay_mode == "restored" and bool(getattr(self, "_debug_face_crops_enabled", False)):
+                    debug_M = M_batch
+                    if int(result.shape[2]) != int(base_01.shape[2]) or int(result.shape[3]) != int(base_01.shape[3]):
+                        scale_x = float(result.shape[3]) / float(max(1, int(base_01.shape[3])))
+                        scale_y = float(result.shape[2]) / float(max(1, int(base_01.shape[2])))
+                        debug_M = M_batch.clone()
+                        debug_M[:, 0, 0] = debug_M[:, 0, 0] / float(scale_x)
+                        debug_M[:, 0, 1] = debug_M[:, 0, 1] / float(scale_y)
+                        debug_M[:, 1, 0] = debug_M[:, 1, 0] / float(scale_x)
+                        debug_M[:, 1, 1] = debug_M[:, 1, 1] / float(scale_y)
+                    composited_crop = kornia.geometry.transform.warp_affine(
+                        result,
+                        debug_M,
+                        (face_h, face_w),
+                        mode="bilinear",
+                        padding_mode="zeros",
+                    )
+                    self._debug_save_face_crops(
+                        aligned=original_crop,
+                        restored=restored_face,
+                        composited=composited_crop,
+                        prefix=str(overlay_mode or "face"),
+                    )
             except Exception:
                 if not bool(getattr(self, "_logged_face_overlay_failure", False)):
                     logging.warning("Post-VAE face overlay failed; leaving target frame unpatched", exc_info=True)
@@ -1746,6 +1794,67 @@ class PostVAEEnhancer:
             clip_id = int(self._face_chunk_seq) + 1
             self._face_chunk_seq = int(clip_id)
 
+            face_source_x2 = bool(getattr(self, "_face_source_x2_enabled", False)) and bool(use_x2)
+            face_stage = self._normalize_face_restore_stage(getattr(self, "_face_restore_stage", "native_first"))
+
+            face_enhancer = None
+            overlay_entries: list[dict[str, torch.Tensor]] = []
+            face_applied_native = False
+            phase_profile["face_init_sec"] = 0.0
+            phase_profile["face_layout_sec"] = 0.0
+            phase_profile["face_overlay_sec"] = 0.0
+            if settings.face_enabled:
+                face_init_t0 = time.perf_counter()
+                face_enhancer = self._get_enhancer(mode="face", use_trt=False)
+                if face_enhancer is None:
+                    self._last_debug_info.update({"return": "no_face_enhancer"})
+                    return None
+                face_prealloc_h = int(height) if face_stage == "native_first" else (int(layer_h) if bool(face_source_x2) else int(height))
+                face_prealloc_w = int(width) if face_stage == "native_first" else (int(layer_w) if bool(face_source_x2) else int(width))
+                self._preallocate(
+                    face_enhancer,
+                    mode="face",
+                    use_trt=False,
+                    height=int(face_prealloc_h),
+                    width=int(face_prealloc_w),
+                )
+                phase_profile["face_init_sec"] = _phase_dt(face_init_t0, device=self.device)
+
+                face_layout_t0 = time.perf_counter()
+                if face_stage == "native_first":
+                    overlay_entries = self._get_face_overlay_entries(
+                        face_enhancer,
+                        base_01,
+                        clip_id=int(clip_id),
+                        output_height=int(height),
+                        output_width=int(width),
+                        affine_scale=1.0,
+                        mask_mode=str(getattr(self, "_face_mask_mode", "inner_square") or "inner_square"),
+                        layout_mode=str(getattr(self, "_face_aligned_layout_mode", "frame_loop") or "frame_loop"),
+                    )
+                    phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
+                    native_overlay_t0 = time.perf_counter()
+                    base_01 = self._apply_face_overlay_batch(
+                        base_01,
+                        base_01=base_01,
+                        face_enhancer=face_enhancer,
+                        overlay_mode="restored",
+                        face_restore=float(settings.face_restore),
+                        clip_id=int(clip_id),
+                        overlay_entries=overlay_entries,
+                    )
+                    phase_profile["face_overlay_sec"] = _phase_dt(native_overlay_t0, device=self.device)
+                    face_applied_native = bool(overlay_entries)
+                    overlay_entries = []
+                else:
+                    # Detect/crop only when face restore is enabled. The post-VAE
+                    # stage can opt into x2 source, but native_first is safer for
+                    # file renders because it avoids inverse-warping a 512 crop
+                    # directly into the enlarged layer.
+                    face_source_01 = None
+                    face_affine_scale = 1.0 if bool(face_source_x2) else float(affine_scale)
+                    overlay_entries = []
+                    phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
             layer_t0 = time.perf_counter()
             if bool(use_x2):
                 base_layer = F.interpolate(
@@ -1759,35 +1868,11 @@ class PostVAEEnhancer:
                 base_layer = base_01
             phase_profile["bicubic_x2_sec"] = _phase_dt(layer_t0, device=self.device)
             phase_profile["post_vae_x2"] = 1 if bool(use_x2) else 0
-            face_source_x2 = bool(getattr(self, "_face_source_x2_enabled", False)) and bool(use_x2)
             face_source_01 = base_layer if bool(face_source_x2) else base_01
-            face_affine_scale = 1.0 if bool(face_source_x2) else float(affine_scale)
-            face_prealloc_h = int(layer_h) if bool(face_source_x2) else int(height)
-            face_prealloc_w = int(layer_w) if bool(face_source_x2) else int(width)
-
-            face_enhancer = None
-            overlay_entries: list[dict[str, torch.Tensor]] = []
-            phase_profile["face_init_sec"] = 0.0
-            phase_profile["face_layout_sec"] = 0.0
-            if settings.face_enabled:
-                face_init_t0 = time.perf_counter()
-                face_enhancer = self._get_enhancer(mode="face", use_trt=False)
-                if face_enhancer is None:
-                    self._last_debug_info.update({"return": "no_face_enhancer"})
-                    return None
-                self._preallocate(
-                    face_enhancer,
-                    mode="face",
-                    use_trt=False,
-                    height=int(face_prealloc_h),
-                    width=int(face_prealloc_w),
-                )
-                phase_profile["face_init_sec"] = _phase_dt(face_init_t0, device=self.device)
-
-                # Detect/crop only when face restore is enabled. Live keeps the
-                # proven native source by default; offline/file render can opt
-                # into x2 source so GFPGAN restores from a less aliased face.
+            background_input_tchw = (base_01 * 2.0 - 1.0).contiguous() if bool(face_applied_native) else frames_tchw
+            if settings.face_enabled and face_stage == "post_vae" and face_enhancer is not None:
                 face_layout_t0 = time.perf_counter()
+                face_affine_scale = 1.0 if bool(face_source_x2) else float(affine_scale)
                 overlay_entries = self._get_face_overlay_entries(
                     face_enhancer,
                     face_source_01,
@@ -1804,9 +1889,11 @@ class PostVAEEnhancer:
                     "render_size": (int(width), int(height)),
                     "post_vae_layer_size": (int(layer_w), int(layer_h)),
                     "post_vae_upscale_x2": bool(use_x2),
-                    "face_source": "x2" if bool(face_source_x2) else "native",
+                    "face_source": "native_first" if bool(face_applied_native) else ("x2" if bool(face_source_x2) else "native"),
+                    "face_restore_stage": str(face_stage),
+                    "face_applied_native": bool(face_applied_native),
                     "clip_id": int(clip_id),
-                    "face_entries": int(len(overlay_entries)),
+                    "face_entries": int(len(overlay_entries)) if not bool(face_applied_native) else 1,
                 }
             )
 
@@ -1844,14 +1931,14 @@ class PostVAEEnhancer:
                         if bool(use_x2):
                             enhanced_01 = self._enhance_background_x2(
                                 bg_enhancer,
-                                frames_tchw,
+                                background_input_tchw,
                                 x2_h=int(layer_h),
                                 x2_w=int(layer_w),
                                 clip_id=int(clip_id),
                             )
                         else:
                             enhanced_01 = bg_enhancer.enhance_gpu(
-                                frames_tchw,
+                                background_input_tchw,
                                 out_h=int(height),
                                 out_w=int(width),
                                 clip_id=int(clip_id),
@@ -1909,8 +1996,9 @@ class PostVAEEnhancer:
                             return None
                         enhanced_01 = base_layer
                 overlay_t0 = time.perf_counter()
-                overlay_mode = "restored" if bool(settings.face_enabled) else "none"
-                if settings.face_enabled:
+                face_overlay_pending = bool(settings.face_enabled and not bool(face_applied_native))
+                overlay_mode = "restored" if bool(face_overlay_pending) else "native_first" if bool(face_applied_native) else "none"
+                if face_overlay_pending:
                     out = self._apply_face_overlay_batch(
                         enhanced_01,
                         base_01=face_source_01,
@@ -1922,8 +2010,10 @@ class PostVAEEnhancer:
                     )
                 else:
                     out = enhanced_01
-                phase_profile["face_overlay_sec"] = _phase_dt(overlay_t0, device=self.device)
-                if settings.face_enabled:
+                phase_profile["face_overlay_sec"] = float(phase_profile.get("face_overlay_sec", 0.0) or 0.0) + _phase_dt(
+                    overlay_t0, device=self.device
+                )
+                if face_overlay_pending:
                     log_phase_timing(
                         "post_vae",
                         "face_overlay",
@@ -1958,7 +2048,7 @@ class PostVAEEnhancer:
                         "return": "ok",
                         "overlay_mode": str(overlay_mode),
                         "face_overlay_requested": bool(settings.face_enabled),
-                        "face_overlay_applied": bool(settings.face_enabled and overlay_entries),
+                        "face_overlay_applied": bool(face_applied_native or (settings.face_enabled and overlay_entries)),
                         "output_shape": tuple(int(v) for v in out.shape),
                         "dt_sec": float(total_sec),
                     }
@@ -1984,7 +2074,7 @@ class PostVAEEnhancer:
                         int(self._last_debug_info.get("face_detect_stride", 1) or 1),
                         int(self._last_debug_info.get("face_detect_frames", int(frames_tchw.shape[0])) or 0),
                         int(self._last_debug_info.get("face_detect_reused_frames", 0) or 0),
-                        int(len(overlay_entries)),
+                        int(len(overlay_entries)) if not bool(face_applied_native) else 1,
                         str(self._last_debug_info.get("face_mask_mode") or "-"),
                         float(phase_profile.get("input_normalize_sec", 0.0) or 0.0),
                         float(phase_profile.get("face_init_sec", 0.0) or 0.0),
@@ -2023,26 +2113,34 @@ class PostVAEEnhancer:
 
             if settings.face_enabled:
                 face_only_t0 = time.perf_counter()
-                out = self._apply_face_overlay_batch(
-                    base_layer,
-                    base_01=face_source_01,
-                    face_enhancer=face_enhancer,
-                    overlay_mode="restored",
-                    face_restore=float(settings.face_restore),
-                    clip_id=int(clip_id),
-                    overlay_entries=overlay_entries,
-                )
-                phase_profile["face_overlay_sec"] = _phase_dt(face_only_t0, device=self.device)
-                log_phase_timing(
-                    "post_vae",
-                    "face_restore_only",
-                    face_only_t0,
-                    enabled=bool(deep_timing),
-                    sync_device=self.device,
-                    device=str(self.device),
-                    frames=int(frames_tchw.shape[0]),
-                    size=f"{int(width)}x{int(height)}",
-                )
+                if bool(face_applied_native):
+                    overlay_mode = "native_first"
+                    out = base_layer
+                    phase_profile["face_overlay_sec"] = float(phase_profile.get("face_overlay_sec", 0.0) or 0.0) + _phase_dt(
+                        face_only_t0, device=self.device
+                    )
+                else:
+                    overlay_mode = "restored"
+                    out = self._apply_face_overlay_batch(
+                        base_layer,
+                        base_01=face_source_01,
+                        face_enhancer=face_enhancer,
+                        overlay_mode=overlay_mode,
+                        face_restore=float(settings.face_restore),
+                        clip_id=int(clip_id),
+                        overlay_entries=overlay_entries,
+                    )
+                    phase_profile["face_overlay_sec"] = _phase_dt(face_only_t0, device=self.device)
+                    log_phase_timing(
+                        "post_vae",
+                        "face_restore_only",
+                        face_only_t0,
+                        enabled=bool(deep_timing),
+                        sync_device=self.device,
+                        device=str(self.device),
+                        frames=int(frames_tchw.shape[0]),
+                        size=f"{int(width)}x{int(height)}",
+                    )
                 resize_t0 = time.perf_counter()
                 out = self._resize_cover_crop_to_output(
                     out,
@@ -2058,9 +2156,9 @@ class PostVAEEnhancer:
                         "return": "ok",
                         "background_mode": "none",
                         "background_trt": False,
-                        "overlay_mode": "restored",
+                        "overlay_mode": str(overlay_mode),
                         "face_overlay_requested": True,
-                        "face_overlay_applied": bool(overlay_entries),
+                        "face_overlay_applied": bool(face_applied_native or overlay_entries),
                         "output_shape": tuple(int(v) for v in out.shape),
                         "dt_sec": float(total_sec),
                     }
@@ -2085,7 +2183,7 @@ class PostVAEEnhancer:
                         int(self._last_debug_info.get("face_detect_stride", 1) or 1),
                         int(self._last_debug_info.get("face_detect_frames", int(frames_tchw.shape[0])) or 0),
                         int(self._last_debug_info.get("face_detect_reused_frames", 0) or 0),
-                        int(len(overlay_entries)),
+                        int(len(overlay_entries)) if not bool(face_applied_native) else 1,
                         str(self._last_debug_info.get("face_mask_mode") or "-"),
                         float(phase_profile.get("input_normalize_sec", 0.0) or 0.0),
                         float(phase_profile.get("face_init_sec", 0.0) or 0.0),
@@ -2103,7 +2201,7 @@ class PostVAEEnhancer:
                     )
                 if post_vae_timing_enabled():
                     logging.info(
-                        "Post-VAE timing: device=%s frames=%d size=%dx%d out=%dx%d face=%.2f bg=%.2f bg_mode=- overlay=restored trt=0 dt=%.3fs",
+                        "Post-VAE timing: device=%s frames=%d size=%dx%d out=%dx%d face=%.2f bg=%.2f bg_mode=- overlay=%s trt=0 dt=%.3fs",
                         str(self.device),
                         int(frames_tchw.shape[0]),
                         int(width),
@@ -2112,6 +2210,7 @@ class PostVAEEnhancer:
                         int(out.shape[2]),
                         float(settings.face_restore),
                         float(settings.background_restore),
+                        str(overlay_mode),
                         float(time.perf_counter() - total_t0),
                     )
                 return out

@@ -231,8 +231,8 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ["SMARTBLOG_RENDER_FINALIZE_BACKGROUND"] = "0"
     os.environ["SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND"] = "0"
     os.environ["SMARTBLOG_RENDER_BURN_IN_SUBTITLES"] = os.environ.get("SMARTBLOG_RENDER_BURN_IN_SUBTITLES", "0")
-    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast")
-    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_CRF", "19")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_PRESET", "faster")
+    os.environ.setdefault("SMARTBLOG_STREAM_FILE_X264_CRF", "15")
     os.environ.setdefault("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4")
     os.environ.setdefault("LIVE_RAW_POST_VAE_ENHANCER", "1")
     os.environ.setdefault(
@@ -243,6 +243,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_PHASE_TIMING", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE", "frame_loop")
@@ -392,8 +393,8 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "SMARTBLOG_RENDER_FINALIZE_BACKGROUND": "0",
         "SMARTBLOG_RENDER_EDGE_FINALIZER_BACKGROUND": "0",
         "SMARTBLOG_RENDER_BURN_IN_SUBTITLES": "0",
-        "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "superfast"),
-        "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "19"),
+        "SMARTBLOG_STREAM_FILE_X264_PRESET": os.environ.get("SMARTBLOG_STREAM_FILE_X264_PRESET", "faster"),
+        "SMARTBLOG_STREAM_FILE_X264_CRF": os.environ.get("SMARTBLOG_STREAM_FILE_X264_CRF", "15"),
         "SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS": os.environ.get("SMARTBLOG_STREAM_FILE_QUEUE_BLOCKS", "4"),
         "LIVE_RAW_POST_VAE_ENHANCER": os.environ.get("LIVE_RAW_POST_VAE_ENHANCER", "1"),
         "LIVE_RAW_POST_VAE_ENHANCER_MODELS_DIR": os.environ.get(
@@ -404,6 +405,9 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         "LIVE_RAW_POST_VAE_PHASE_TIMING": os.environ.get("LIVE_RAW_POST_VAE_PHASE_TIMING", "1"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_AMP": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_AMP", "0"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_CUDNN", "0"),
+        "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE": os.environ.get(
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first"
+        ),
         "LIVE_RAW_POST_VAE_FACE_AFFINE_CPU": os.environ.get("LIVE_RAW_POST_VAE_FACE_AFFINE_CPU", "1"),
         "LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE": os.environ.get("LIVE_RAW_POST_VAE_FACE_RESTORE_BATCH_SIZE", "1"),
         "LIVE_RAW_POST_VAE_FACE_ALIGNED_LAYOUT_MODE": os.environ.get(
@@ -571,6 +575,7 @@ class Predictor(BasePredictor):
         infer_frames: int = 0,
         motion_file: int = -1,
         motion_mode: str = "",
+        face_restore_stage: str = "",
         face_source_x2: int = -1,
         debug_face_crops: int = -1,
         stream_file_nvvfx: int = -1,
@@ -648,6 +653,15 @@ class Predictor(BasePredictor):
             else:
                 raise RuntimeError(f"Unsupported motion_mode override: {motion_mode_override}")
 
+        face_stage_override = str(face_restore_stage or "").strip().lower().replace("-", "_")
+        if face_stage_override:
+            if face_stage_override in {"native", "native_first", "pre_upscale", "preupscale", "vae", "vae_native"}:
+                requested["LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE"] = "native_first"
+            elif face_stage_override in {"post", "post_vae", "x2", "layer", "post_upscale", "postupscale"}:
+                requested["LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE"] = "post_vae"
+            else:
+                raise RuntimeError(f"Unsupported face_restore_stage override: {face_restore_stage}")
+
         try:
             face_source_override = int(face_source_x2)
         except Exception:
@@ -709,6 +723,9 @@ class Predictor(BasePredictor):
         os.environ["SMARTBLOG_STREAM_FILE_NVVFX_QUALITY"] = os.environ.get(
             "VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"
         )
+        os.environ["LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE"] = os.environ.get(
+            "LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE", "native_first"
+        )
         os.environ["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
         os.environ["LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS"] = os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0")
         if os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0") == "1":
@@ -731,6 +748,7 @@ class Predictor(BasePredictor):
             f"infer_frames={os.environ.get('INFER_FRAMES', '')} "
             f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
             f"motion_mode={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE', '')} "
+            f"face_stage={os.environ.get('LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE', '')} "
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
             f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "
@@ -833,8 +851,12 @@ class Predictor(BasePredictor):
             description="Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop.",
             default=-1,
         ),
+        face_restore_stage: str = Input(
+            description="Optional cold-start GFPGAN paste stage override: native_first or post_vae.",
+            default="",
+        ),
         debug_face_crops: int = Input(
-            description="Debug only: -1 default, 1 returns a zip with avatar.mp4 plus aligned/restored GFPGAN face crops.",
+            description="Debug only: -1 default, 1 returns a zip with avatar.mp4 plus GFPGAN face crop diagnostics.",
             default=-1,
         ),
         face_restore: float = Input(
@@ -879,6 +901,7 @@ class Predictor(BasePredictor):
             infer_frames=infer_frames,
             motion_file=motion_file,
             motion_mode=motion_mode,
+            face_restore_stage=face_restore_stage,
             face_source_x2=face_source_x2,
             debug_face_crops=debug_face_crops,
             stream_file_nvvfx=stream_file_nvvfx,
@@ -1067,6 +1090,7 @@ class Predictor(BasePredictor):
             f"size={size} output={req.stream_file_output_width}x{req.stream_file_output_height} "
             f"fps={fps}->{output_fps} interpolation={stream_file_interpolation or 'off'} "
             f"face_restore={face_restore:.2f} background_restore={background_restore:.2f} "
+            f"face_stage={os.environ.get('LIVE_RAW_POST_VAE_FACE_RESTORE_STAGE', '')} "
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
             f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "

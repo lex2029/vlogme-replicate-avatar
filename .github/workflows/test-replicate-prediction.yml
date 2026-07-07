@@ -83,8 +83,12 @@ on:
         description: "Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop."
         required: false
         default: "-1"
+      face_restore_stage:
+        description: "Optional cold-start GFPGAN paste stage override: native_first or post_vae."
+        required: false
+        default: ""
       debug_face_crops:
-        description: "Debug only: -1 default, 1 returns a zip with avatar.mp4 plus aligned/restored GFPGAN face crops."
+        description: "Debug only: -1 default, 1 returns a zip with avatar.mp4 plus GFPGAN face crop diagnostics."
         required: false
         default: "-1"
       stream_file_interpolation:
@@ -139,6 +143,7 @@ jobs:
             --motion-mode "${{ inputs.motion_mode }}" \
             --audio-seconds "${{ inputs.audio_seconds }}" \
             --face-restore "${{ inputs.face_restore }}" \
+            --face-restore-stage "${{ inputs.face_restore_stage }}" \
             --face-source-x2 "${{ inputs.face_source_x2 }}" \
             --debug-face-crops "${{ inputs.debug_face_crops }}" \
             --stream-file-interpolation "${{ inputs.stream_file_interpolation }}" \
