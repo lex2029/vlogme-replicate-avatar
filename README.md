@@ -24,11 +24,15 @@ through Replicate.
 </p>
 
 <p align="center">
-  <img
-    src="test_assets/friendly_ai_presenter.jpg"
-    alt="Friendly AI presenter sample input"
-    width="320"
-  >
+  <video
+    src="assets/vlogme-avatar-demo.mp4"
+    width="360"
+    controls
+  ></video>
+</p>
+
+<p align="center">
+  <a href="assets/vlogme-avatar-demo.mp4">Open the demo video</a>
 </p>
 
 ## What It Does
@@ -97,6 +101,7 @@ See [`examples/`](examples/) for a complete runnable script.
 ├── run.py                        # Heavy GPU avatar predictor interface
 ├── cog.yaml                      # Heavy GPU Cog image
 ├── runtime/SmartBlog-Live/       # Vendored avatar runtime snapshot
+├── assets/                       # Public README demo video
 ├── test_assets/                  # Small public sample image/audio inputs
 ├── examples/                     # Public API examples
 ├── docs/replicate-model-readme.md
