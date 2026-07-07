@@ -47,6 +47,14 @@ on:
         description: "1 enables subtitles, 0 disables."
         required: false
         default: "1"
+      webhook_url:
+        description: "Optional Replicate webhook URL for cancellation handoff"
+        required: false
+        default: "https://vlogme.ai/api/public/v1/replicate/webhook"
+      webhook_events:
+        description: "Comma-separated Replicate webhook events"
+        required: false
+        default: "logs,completed"
 
 jobs:
   test_bridge_prediction:
@@ -74,4 +82,6 @@ jobs:
             --vlogme-api-url "${{ inputs.vlogme_api_url }}" \
             --aspect-ratio "${{ inputs.aspect_ratio }}" \
             --face-restore "${{ inputs.face_restore }}" \
-            --live-subtitles "${{ inputs.live_subtitles }}"
+            --live-subtitles "${{ inputs.live_subtitles }}" \
+            --webhook-url "${{ inputs.webhook_url }}" \
+            --webhook-events "${{ inputs.webhook_events }}"

@@ -101,6 +101,16 @@ def main() -> int:
     parser.add_argument("--aspect-ratio", default="9:16", choices=["9:16", "16:9", "1:1"])
     parser.add_argument("--face-restore", type=float, default=-1.0)
     parser.add_argument("--live-subtitles", type=int, default=1)
+    parser.add_argument(
+        "--webhook-url",
+        default=os.environ.get("REPLICATE_BRIDGE_WEBHOOK_URL", "").strip(),
+        help="Optional Replicate prediction webhook URL, for example the VlogMe cancellation bridge.",
+    )
+    parser.add_argument(
+        "--webhook-events",
+        default=os.environ.get("REPLICATE_BRIDGE_WEBHOOK_EVENTS", "logs,completed").strip(),
+        help="Comma-separated Replicate webhook events when --webhook-url is set.",
+    )
     args = parser.parse_args()
 
     replicate_token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
@@ -133,6 +143,12 @@ def main() -> int:
             "face_restore": float(args.face_restore),
         },
     }
+    webhook_url = str(args.webhook_url or "").strip()
+    if webhook_url:
+        events = [event.strip() for event in str(args.webhook_events or "").split(",") if event.strip()]
+        payload["webhook"] = webhook_url
+        payload["webhook_events_filter"] = events or ["logs", "completed"]
+        print(f"Using webhook {webhook_url} events={payload['webhook_events_filter']}")
     if args.deployment:
         create_url = f"{API_ROOT}/deployments/{args.deployment}/predictions"
         print(f"Using deployment {args.deployment}")

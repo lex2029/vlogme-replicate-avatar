@@ -91,6 +91,11 @@ The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
 - `VLOGME_API_TOKEN` for the VlogMe public API. Use a paid/internal VlogMe API
   token from `/settings/api`; the bridge submits through
   `POST /api/public/v1/videos` and polls `GET /api/public/v1/videos/:id`.
+- For cancellation handoff, pass the VlogMe Replicate webhook URL when creating
+  predictions:
+  `https://vlogme.ai/api/public/v1/replicate/webhook`, with events
+  `logs,completed`. The smoke workflow exposes this as `webhook_url` and
+  `webhook_events`.
 
 The `Cancel Active Replicate Predictions` workflow scans recent Replicate
 predictions and cancels active `starting`/`processing` jobs for a model or
