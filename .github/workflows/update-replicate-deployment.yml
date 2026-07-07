@@ -74,6 +74,9 @@ jobs:
                       return json.loads(response.read().decode("utf-8"))
               except urllib.error.HTTPError as exc:
                   detail = exc.read().decode("utf-8", errors="replace")
+                  if exc.code == 409 and "would have no effect" in detail:
+                      print(f"Replicate API {method} {url}: no-op update accepted: {detail}")
+                      return request("GET", url)
                   raise RuntimeError(f"Replicate API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
 
           if not version:
