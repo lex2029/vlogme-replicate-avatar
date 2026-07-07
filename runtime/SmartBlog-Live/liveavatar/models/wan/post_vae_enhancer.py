@@ -243,6 +243,9 @@ class PostVAEEnhancer:
         self._face_mask_mode = self._normalize_face_mask_mode(
             os.getenv("LIVE_RAW_POST_VAE_FACE_MASK_MODE", "inner_square") or "inner_square"
         )
+        self._face_paste_mode = self._normalize_face_paste_mode(
+            os.getenv("LIVE_RAW_POST_VAE_FACE_PASTE_MODE", "batch") or "batch"
+        )
         self._face_mask_radius_x = max(0.12, min(0.49, float(self._face_mask_radius_x)))
         self._face_mask_radius_y = max(0.12, min(0.60, float(self._face_mask_radius_y)))
         self._face_mask_center_y = max(0.35, min(0.70, float(self._face_mask_center_y)))
@@ -530,6 +533,13 @@ class PostVAEEnhancer:
         if raw in {"post", "post_vae", "x2", "layer", "post_upscale", "postupscale"}:
             return "post_vae"
         return "native_first"
+
+    @staticmethod
+    def _normalize_face_paste_mode(mode: object) -> str:
+        raw = str(mode or "batch").strip().lower().replace("-", "_")
+        if raw in {"official", "enchenh2d", "gfpgan", "gfpganer", "per_frame", "perframe"}:
+            return "official"
+        return "batch"
 
     @staticmethod
     def _erode_mask(mask: torch.Tensor, kernel_size: int) -> torch.Tensor:
@@ -1188,6 +1198,79 @@ class PostVAEEnhancer:
         self._last_debug_info["face_overlay_profile"] = dict(profile)
         return result.clamp(0, 1)
 
+    def _apply_official_face_restore_batch(
+        self,
+        frames_01: torch.Tensor,
+        *,
+        face_enhancer: object,
+        face_restore: float,
+        clip_id: int,
+    ) -> torch.Tensor:
+        face = _clamp01(float(face_restore or 0.0))
+        if face <= 0.0:
+            return frames_01
+        run_gfpgan = getattr(face_enhancer, "_run_gfpgan", None)
+        if not callable(run_gfpgan):
+            return frames_01
+
+        started = time.perf_counter()
+        old_blend = getattr(face_enhancer, "blend", None)
+        outputs: list[torch.Tensor] = []
+        failures = 0
+        try:
+            try:
+                setattr(face_enhancer, "blend", float(face))
+            except Exception:
+                pass
+            for idx in range(int(frames_01.shape[0])):
+                frame = frames_01[idx : idx + 1].to(device=self.device, dtype=torch.float32, copy=False).contiguous()
+                try:
+                    restored = run_gfpgan(
+                        frame,
+                        clip_id=(int(clip_id) * 100000) + int(idx) + 1,
+                        frame_idx=int(idx),
+                    )
+                    if not torch.is_tensor(restored) or tuple(restored.shape) != tuple(frame.shape):
+                        raise RuntimeError("official GFPGAN returned invalid shape")
+                    if torch.isnan(restored).any() or torch.isinf(restored).any():
+                        raise RuntimeError("official GFPGAN returned non-finite values")
+                    outputs.append(_finite_clamp01(restored))
+                except Exception:
+                    failures += 1
+                    outputs.append(frame)
+        finally:
+            if old_blend is not None:
+                try:
+                    setattr(face_enhancer, "blend", old_blend)
+                except Exception:
+                    pass
+
+        if not outputs:
+            return frames_01
+        out = torch.cat(outputs, dim=0).contiguous().clamp(0.0, 1.0)
+        elapsed = _phase_dt(started, device=self.device)
+        self._last_debug_info["face_paste_mode"] = "official"
+        self._last_debug_info["face_mask_mode"] = "official_gfpgan"
+        self._last_debug_info["face_detect_stride"] = 1
+        self._last_debug_info["face_detect_frames"] = int(frames_01.shape[0])
+        self._last_debug_info["face_detect_reused_frames"] = 0
+        self._last_debug_info["face_overlay_profile"] = {
+            "crop_sec": 0.0,
+            "restore_sec": float(elapsed),
+            "blend_sec": 0.0,
+            "paste_sec": 0.0,
+            "composite_sec": 0.0,
+            "entries": int(frames_01.shape[0]),
+            "failures": int(failures),
+        }
+        self._last_debug_info["face_restore_profile"] = {
+            "model_sec": float(elapsed),
+            "restore_h": 512,
+            "restore_w": 512,
+            "small_crop": 1,
+        }
+        return out
+
     def apply_face_aligned_transform_tchw(
         self,
         frames_01: torch.Tensor,
@@ -1796,6 +1879,7 @@ class PostVAEEnhancer:
 
             face_source_x2 = bool(getattr(self, "_face_source_x2_enabled", False)) and bool(use_x2)
             face_stage = self._normalize_face_restore_stage(getattr(self, "_face_restore_stage", "native_first"))
+            face_paste_mode = self._normalize_face_paste_mode(getattr(self, "_face_paste_mode", "batch"))
 
             face_enhancer = None
             overlay_entries: list[dict[str, torch.Tensor]] = []
@@ -1822,29 +1906,38 @@ class PostVAEEnhancer:
 
                 face_layout_t0 = time.perf_counter()
                 if face_stage == "native_first":
-                    overlay_entries = self._get_face_overlay_entries(
-                        face_enhancer,
-                        base_01,
-                        clip_id=int(clip_id),
-                        output_height=int(height),
-                        output_width=int(width),
-                        affine_scale=1.0,
-                        mask_mode=str(getattr(self, "_face_mask_mode", "inner_square") or "inner_square"),
-                        layout_mode=str(getattr(self, "_face_aligned_layout_mode", "frame_loop") or "frame_loop"),
-                    )
-                    phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
                     native_overlay_t0 = time.perf_counter()
-                    base_01 = self._apply_face_overlay_batch(
-                        base_01,
-                        base_01=base_01,
-                        face_enhancer=face_enhancer,
-                        overlay_mode="restored",
-                        face_restore=float(settings.face_restore),
-                        clip_id=int(clip_id),
-                        overlay_entries=overlay_entries,
-                    )
+                    if face_paste_mode == "official":
+                        phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
+                        base_01 = self._apply_official_face_restore_batch(
+                            base_01,
+                            face_enhancer=face_enhancer,
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                        )
+                    else:
+                        overlay_entries = self._get_face_overlay_entries(
+                            face_enhancer,
+                            base_01,
+                            clip_id=int(clip_id),
+                            output_height=int(height),
+                            output_width=int(width),
+                            affine_scale=1.0,
+                            mask_mode=str(getattr(self, "_face_mask_mode", "inner_square") or "inner_square"),
+                            layout_mode=str(getattr(self, "_face_aligned_layout_mode", "frame_loop") or "frame_loop"),
+                        )
+                        phase_profile["face_layout_sec"] = _phase_dt(face_layout_t0, device=self.device)
+                        base_01 = self._apply_face_overlay_batch(
+                            base_01,
+                            base_01=base_01,
+                            face_enhancer=face_enhancer,
+                            overlay_mode="restored",
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                            overlay_entries=overlay_entries,
+                        )
                     phase_profile["face_overlay_sec"] = _phase_dt(native_overlay_t0, device=self.device)
-                    face_applied_native = bool(overlay_entries)
+                    face_applied_native = bool(face_paste_mode == "official" or overlay_entries)
                     overlay_entries = []
                 else:
                     # Detect/crop only when face restore is enabled. The post-VAE
@@ -1870,7 +1963,12 @@ class PostVAEEnhancer:
             phase_profile["post_vae_x2"] = 1 if bool(use_x2) else 0
             face_source_01 = base_layer if bool(face_source_x2) else base_01
             background_input_tchw = (base_01 * 2.0 - 1.0).contiguous() if bool(face_applied_native) else frames_tchw
-            if settings.face_enabled and face_stage == "post_vae" and face_enhancer is not None:
+            if (
+                settings.face_enabled
+                and face_stage == "post_vae"
+                and face_enhancer is not None
+                and face_paste_mode != "official"
+            ):
                 face_layout_t0 = time.perf_counter()
                 face_affine_scale = 1.0 if bool(face_source_x2) else float(affine_scale)
                 overlay_entries = self._get_face_overlay_entries(
@@ -1891,6 +1989,7 @@ class PostVAEEnhancer:
                     "post_vae_upscale_x2": bool(use_x2),
                     "face_source": "native_first" if bool(face_applied_native) else ("x2" if bool(face_source_x2) else "native"),
                     "face_restore_stage": str(face_stage),
+                    "face_paste_mode": str(face_paste_mode),
                     "face_applied_native": bool(face_applied_native),
                     "clip_id": int(clip_id),
                     "face_entries": int(len(overlay_entries)) if not bool(face_applied_native) else 1,
@@ -1997,17 +2096,33 @@ class PostVAEEnhancer:
                         enhanced_01 = base_layer
                 overlay_t0 = time.perf_counter()
                 face_overlay_pending = bool(settings.face_enabled and not bool(face_applied_native))
-                overlay_mode = "restored" if bool(face_overlay_pending) else "native_first" if bool(face_applied_native) else "none"
+                overlay_mode = (
+                    "official"
+                    if bool(face_overlay_pending) and face_paste_mode == "official"
+                    else "restored"
+                    if bool(face_overlay_pending)
+                    else "native_first"
+                    if bool(face_applied_native)
+                    else "none"
+                )
                 if face_overlay_pending:
-                    out = self._apply_face_overlay_batch(
-                        enhanced_01,
-                        base_01=face_source_01,
-                        face_enhancer=face_enhancer,
-                        overlay_mode=overlay_mode,
-                        face_restore=float(settings.face_restore),
-                        clip_id=int(clip_id),
-                        overlay_entries=overlay_entries,
-                    )
+                    if face_paste_mode == "official":
+                        out = self._apply_official_face_restore_batch(
+                            enhanced_01,
+                            face_enhancer=face_enhancer,
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                        )
+                    else:
+                        out = self._apply_face_overlay_batch(
+                            enhanced_01,
+                            base_01=face_source_01,
+                            face_enhancer=face_enhancer,
+                            overlay_mode=overlay_mode,
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                            overlay_entries=overlay_entries,
+                        )
                 else:
                     out = enhanced_01
                 phase_profile["face_overlay_sec"] = float(phase_profile.get("face_overlay_sec", 0.0) or 0.0) + _phase_dt(
@@ -2048,7 +2163,10 @@ class PostVAEEnhancer:
                         "return": "ok",
                         "overlay_mode": str(overlay_mode),
                         "face_overlay_requested": bool(settings.face_enabled),
-                        "face_overlay_applied": bool(face_applied_native or (settings.face_enabled and overlay_entries)),
+                        "face_overlay_applied": bool(
+                            face_applied_native
+                            or (settings.face_enabled and (overlay_entries or face_paste_mode == "official"))
+                        ),
                         "output_shape": tuple(int(v) for v in out.shape),
                         "dt_sec": float(total_sec),
                     }
@@ -2121,15 +2239,24 @@ class PostVAEEnhancer:
                     )
                 else:
                     overlay_mode = "restored"
-                    out = self._apply_face_overlay_batch(
-                        base_layer,
-                        base_01=face_source_01,
-                        face_enhancer=face_enhancer,
-                        overlay_mode=overlay_mode,
-                        face_restore=float(settings.face_restore),
-                        clip_id=int(clip_id),
-                        overlay_entries=overlay_entries,
-                    )
+                    if face_paste_mode == "official":
+                        overlay_mode = "official"
+                        out = self._apply_official_face_restore_batch(
+                            base_layer,
+                            face_enhancer=face_enhancer,
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                        )
+                    else:
+                        out = self._apply_face_overlay_batch(
+                            base_layer,
+                            base_01=face_source_01,
+                            face_enhancer=face_enhancer,
+                            overlay_mode=overlay_mode,
+                            face_restore=float(settings.face_restore),
+                            clip_id=int(clip_id),
+                            overlay_entries=overlay_entries,
+                        )
                     phase_profile["face_overlay_sec"] = _phase_dt(face_only_t0, device=self.device)
                     log_phase_timing(
                         "post_vae",
@@ -2158,7 +2285,7 @@ class PostVAEEnhancer:
                         "background_trt": False,
                         "overlay_mode": str(overlay_mode),
                         "face_overlay_requested": True,
-                        "face_overlay_applied": bool(face_applied_native or overlay_entries),
+                        "face_overlay_applied": bool(face_applied_native or overlay_entries or face_paste_mode == "official"),
                         "output_shape": tuple(int(v) for v in out.shape),
                         "dt_sec": float(total_sec),
                     }
