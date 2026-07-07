@@ -21,6 +21,7 @@ except Exception:
 
 
 DEFAULT_VLOGME_API_URL = "https://vlogme.ai/api/public/v1"
+DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 TERMINAL_FAILURE = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
 
@@ -37,6 +38,11 @@ def _secret_value(secret: Secret | None) -> str:
     if secret is None:
         return ""
     return (secret.get_secret_value() or "").strip()
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    value = os.environ.get(name, default)
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _guess_mime(path: SysPath, fallback: str) -> str:
@@ -188,8 +194,12 @@ class Predictor(BasePredictor):
             default="",
         ),
         watermark_text: str = Input(
-            description="Optional watermark text. Empty keeps the VlogMe account default.",
+            description="Optional watermark text. Empty uses the VlogMe brand watermark when watermark_enabled is true.",
             default="",
+        ),
+        watermark_enabled: bool = Input(
+            description="Burn a watermark into the final video. Keep true for free generations; paid callers can set false.",
+            default=True,
         ),
         timeout_sec: int = Input(
             description="Maximum time to wait for VlogMe to finish",
@@ -222,8 +232,16 @@ class Predictor(BasePredictor):
             create_body["video_prompt"] = str(video_prompt).strip()
         if str(video_negative_prompt or "").strip():
             create_body["video_negative_prompt"] = str(video_negative_prompt).strip()
-        if str(watermark_text or "").strip():
-            create_body["watermark_text"] = str(watermark_text).strip()
+        watermark_disable_allowed = _env_flag("VLOGME_BRIDGE_ALLOW_WATERMARK_DISABLE", "0")
+        should_apply_watermark = bool(watermark_enabled) or not watermark_disable_allowed
+        if not bool(watermark_enabled) and not watermark_disable_allowed:
+            _log("watermark disable requested but not allowed for this bridge deployment")
+        if should_apply_watermark:
+            create_body["watermark_text"] = (
+                str(watermark_text or "").strip()
+                or os.environ.get("VLOGME_BRIDGE_DEFAULT_WATERMARK_TEXT", "").strip()
+                or DEFAULT_WATERMARK_TEXT
+            )
 
         created = _json_request("POST", f"{api_root}/videos", token=token, body=create_body)
         video_id = str(created.get("id") or "").strip()

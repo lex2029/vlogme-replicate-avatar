@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 API_ROOT = "https://api.replicate.com/v1"
+DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
 VLOGME_JOB_ACCEPTED_RE = re.compile(
     r"VlogMe job accepted:\s*id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.IGNORECASE,
@@ -147,6 +148,17 @@ def main() -> int:
     parser.add_argument("--face-restore", type=float, default=-1.0)
     parser.add_argument("--live-subtitles", type=int, default=1)
     parser.add_argument(
+        "--watermark-enabled",
+        type=int,
+        default=1,
+        help="1 enables the final video watermark, 0 disables it for paid/no-watermark tests.",
+    )
+    parser.add_argument(
+        "--watermark-text",
+        default=os.environ.get("VLOGME_BRIDGE_DEFAULT_WATERMARK_TEXT", DEFAULT_WATERMARK_TEXT),
+        help="Watermark text to pass when --watermark-enabled=1.",
+    )
+    parser.add_argument(
         "--cancel-after-job-accepted",
         type=int,
         default=0,
@@ -198,8 +210,11 @@ def main() -> int:
             "aspect_ratio": args.aspect_ratio,
             "live_subtitles": bool(args.live_subtitles),
             "face_restore": float(args.face_restore),
+            "watermark_enabled": bool(args.watermark_enabled),
         },
     }
+    if bool(args.watermark_enabled) and str(args.watermark_text or "").strip():
+        payload["input"]["watermark_text"] = str(args.watermark_text).strip()
     webhook_url = str(args.webhook_url or "").strip()
     if webhook_url:
         events = [event.strip() for event in str(args.webhook_events or "").split(",") if event.strip()]

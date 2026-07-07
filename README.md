@@ -96,6 +96,11 @@ The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
   `https://vlogme.ai/api/public/v1/replicate/webhook`, with events
   `logs,completed`. The smoke workflow exposes this as `webhook_url` and
   `webhook_events`.
+- The bridge exposes `live_subtitles` and `watermark_enabled` toggles. Watermark
+  defaults to on and uses `Created by VlogMe.AI` when no custom
+  `watermark_text` is supplied. Passing `watermark_enabled=false` only disables
+  it when the deployment explicitly sets `VLOGME_BRIDGE_ALLOW_WATERMARK_DISABLE=1`;
+  leave that off for free generations.
 
 The `Cancel Active Replicate Predictions` workflow scans recent Replicate
 predictions and cancels active `starting`/`processing` jobs for a model or

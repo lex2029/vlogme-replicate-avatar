@@ -47,6 +47,14 @@ on:
         description: "1 enables subtitles, 0 disables."
         required: false
         default: "1"
+      watermark_enabled:
+        description: "1 enables watermark. 0 disables only when the deployment allows no-watermark mode."
+        required: false
+        default: "1"
+      watermark_text:
+        description: "Watermark text when watermark is enabled."
+        required: false
+        default: "Created by VlogMe.AI"
       cancel_after_job_accepted:
         description: "1 cancels the prediction after VlogMe job id appears and verifies VlogMe cancellation"
         required: false
@@ -91,6 +99,8 @@ jobs:
             --aspect-ratio "${{ inputs.aspect_ratio }}" \
             --face-restore "${{ inputs.face_restore }}" \
             --live-subtitles "${{ inputs.live_subtitles }}" \
+            --watermark-enabled "${{ inputs.watermark_enabled }}" \
+            --watermark-text "${{ inputs.watermark_text }}" \
             --cancel-after-job-accepted "${{ inputs.cancel_after_job_accepted }}" \
             --cancel-wait-sec "${{ inputs.cancel_wait_sec }}" \
             --webhook-url "${{ inputs.webhook_url }}" \
