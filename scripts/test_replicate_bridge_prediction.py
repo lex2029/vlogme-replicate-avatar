@@ -6,6 +6,7 @@ import json
 import math
 import mimetypes
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -15,6 +16,11 @@ from pathlib import Path
 
 
 API_ROOT = "https://api.replicate.com/v1"
+VLOGME_JOB_ACCEPTED_RE = re.compile(
+    r"VlogMe job accepted:\s*id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+    re.IGNORECASE,
+)
+CANCELLED_BY_USER_MARKER = "Cancelled by user"
 
 
 def _request(method: str, url: str, *, token: str, body: dict | None = None) -> dict:
@@ -87,6 +93,45 @@ def _tail_logs(prediction: dict, max_chars: int = 8000) -> str:
     return logs if len(logs) <= max_chars else logs[-max_chars:]
 
 
+def _extract_vlogme_job_id(logs: str) -> str:
+    match = VLOGME_JOB_ACCEPTED_RE.search(logs)
+    return match.group(1) if match else ""
+
+
+def _wait_for_vlogme_cancel(
+    api_root: str,
+    token: str,
+    video_id: str,
+    *,
+    wait_sec: int,
+    poll_sec: int,
+) -> bool:
+    deadline = time.time() + max(10, int(wait_sec))
+    last_seen = ("", -1, "", "")
+    while time.time() < deadline:
+        status_doc = _json_request("GET", f"{api_root}/videos/{video_id}", token=token, timeout=60)
+        status = str(status_doc.get("status") or "").strip().lower()
+        progress = int(float(status_doc.get("progress") or 0))
+        stage = str(status_doc.get("stage") or "").strip()
+        error_message = str(status_doc.get("error_message") or "").strip()
+        current = (status, progress, stage, error_message)
+        if current != last_seen:
+            print(
+                "VlogMe after cancel: "
+                f"status={status or 'unknown'} progress={progress} stage={stage} "
+                f"error={error_message[:160]}"
+            )
+            last_seen = current
+        if status in {"cancelled", "canceled"}:
+            return True
+        if status == "failed" and error_message.startswith(CANCELLED_BY_USER_MARKER):
+            return True
+        if status in TERMINAL_SUCCESS:
+            return False
+        time.sleep(max(2, int(poll_sec)))
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a smoke prediction on the Replicate VlogMe bridge.")
     parser.add_argument("--model", default="lex2029/vlogme-avatar-bridge")
@@ -101,6 +146,18 @@ def main() -> int:
     parser.add_argument("--aspect-ratio", default="9:16", choices=["9:16", "16:9", "1:1"])
     parser.add_argument("--face-restore", type=float, default=-1.0)
     parser.add_argument("--live-subtitles", type=int, default=1)
+    parser.add_argument(
+        "--cancel-after-job-accepted",
+        type=int,
+        default=0,
+        help="Cancel the Replicate prediction once bridge logs expose the VlogMe job id.",
+    )
+    parser.add_argument(
+        "--cancel-wait-sec",
+        type=int,
+        default=120,
+        help="How long to wait for VlogMe to reflect a Replicate-triggered cancellation.",
+    )
     parser.add_argument(
         "--webhook-url",
         default=os.environ.get("REPLICATE_BRIDGE_WEBHOOK_URL", "").strip(),
@@ -170,15 +227,59 @@ def main() -> int:
     started_at = time.time()
     deadline = started_at + int(args.timeout_sec)
     last_status = ""
+    last_vlogme_job_id = ""
+    cancel_requested = False
     try:
         while time.time() < deadline:
             prediction = _request("GET", get_url, token=replicate_token)
             status = str(prediction.get("status") or "")
+            logs = str(prediction.get("logs") or "")
             elapsed = time.time() - started_at
             if status != last_status:
                 print(f"Status: {status} after {elapsed:.0f}s")
                 last_status = status
+
+            if args.cancel_after_job_accepted and not cancel_requested:
+                vlogme_job_id = _extract_vlogme_job_id(logs)
+                if vlogme_job_id:
+                    last_vlogme_job_id = vlogme_job_id
+                    print(f"VlogMe job observed in logs: {last_vlogme_job_id}")
+                    _try_cancel(str(cancel_url or ""), token=replicate_token, prediction_id=str(prediction_id))
+                    cancel_requested = True
+
             if status in {"succeeded", "failed", "canceled"}:
+                if args.cancel_after_job_accepted:
+                    if not last_vlogme_job_id:
+                        last_vlogme_job_id = _extract_vlogme_job_id(logs)
+                    if not last_vlogme_job_id:
+                        print("Cancellation test failed: VlogMe job id never appeared in logs", file=sys.stderr)
+                        return 1
+                    if status == "succeeded":
+                        print("Cancellation test failed: Replicate prediction succeeded before cancel", file=sys.stderr)
+                        return 1
+                    ok = _wait_for_vlogme_cancel(
+                        str(args.vlogme_api_url).strip().rstrip("/"),
+                        vlogme_token,
+                        last_vlogme_job_id,
+                        wait_sec=int(args.cancel_wait_sec),
+                        poll_sec=int(args.poll_sec),
+                    )
+                    if ok:
+                        print(
+                            "Cancellation test passed: "
+                            f"prediction={prediction_id} vlogme_job={last_vlogme_job_id}"
+                        )
+                        return 0
+                    print(
+                        "Cancellation test failed: VlogMe job did not reflect cancellation in time",
+                        file=sys.stderr,
+                    )
+                    logs = _tail_logs(prediction)
+                    if logs:
+                        print("Log tail:")
+                        print(logs)
+                    return 1
+
                 print(
                     json.dumps(
                         {

@@ -47,6 +47,14 @@ on:
         description: "1 enables subtitles, 0 disables."
         required: false
         default: "1"
+      cancel_after_job_accepted:
+        description: "1 cancels the prediction after VlogMe job id appears and verifies VlogMe cancellation"
+        required: false
+        default: "0"
+      cancel_wait_sec:
+        description: "Seconds to wait for VlogMe to reflect cancellation"
+        required: false
+        default: "120"
       webhook_url:
         description: "Optional Replicate webhook URL for cancellation handoff"
         required: false
@@ -83,5 +91,7 @@ jobs:
             --aspect-ratio "${{ inputs.aspect_ratio }}" \
             --face-restore "${{ inputs.face_restore }}" \
             --live-subtitles "${{ inputs.live_subtitles }}" \
+            --cancel-after-job-accepted "${{ inputs.cancel_after_job_accepted }}" \
+            --cancel-wait-sec "${{ inputs.cancel_wait_sec }}" \
             --webhook-url "${{ inputs.webhook_url }}" \
             --webhook-events "${{ inputs.webhook_events }}"
