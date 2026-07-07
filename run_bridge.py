@@ -4,6 +4,7 @@ import base64
 import json
 import mimetypes
 import os
+import signal
 import time
 import urllib.error
 import urllib.request
@@ -16,6 +17,10 @@ from cog import BasePredictor, Input, Path, Secret
 DEFAULT_VLOGME_API_URL = "https://vlogme.ai/api/public/v1"
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 TERMINAL_FAILURE = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
+
+
+class _ReplicatePredictionCancelled(RuntimeError):
+    pass
 
 
 def _log(message: str) -> None:
@@ -99,6 +104,40 @@ def _try_cancel_vlogme_job(api_root: str, token: str, video_id: str, reason: str
         _log(f"requested VlogMe cancellation: id={video_id} reason={reason}")
     except Exception as exc:
         _log(f"VlogMe cancellation skipped/failed: id={video_id} reason={reason} error={exc}")
+
+
+class _VlogMeCancelOnSignal:
+    def __init__(self, api_root: str, token: str, video_id: str) -> None:
+        self.api_root = api_root
+        self.token = token
+        self.video_id = video_id
+        self.previous: dict[int, Any] = {}
+
+    def __enter__(self) -> "_VlogMeCancelOnSignal":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                self.previous[sig] = signal.getsignal(sig)
+                signal.signal(sig, self._handle)
+            except Exception:
+                pass
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        for sig, handler in self.previous.items():
+            try:
+                signal.signal(sig, handler)
+            except Exception:
+                pass
+        return False
+
+    def _handle(self, signum: int, _frame: Any) -> None:
+        _try_cancel_vlogme_job(
+            self.api_root,
+            self.token,
+            self.video_id,
+            f"replicate_signal_{int(signum)}",
+        )
+        raise _ReplicatePredictionCancelled(f"Replicate prediction cancelled by signal {int(signum)}")
 
 
 class Predictor(BasePredictor):
@@ -197,29 +236,30 @@ class Predictor(BasePredictor):
         last_progress = -1
 
         try:
-            while time.time() < deadline:
-                status_doc = _json_request("GET", f"{api_root}/videos/{video_id}", token=token)
-                status = str(status_doc.get("status") or "").strip().lower()
-                progress = int(float(status_doc.get("progress") or 0))
-                stage = str(status_doc.get("stage") or "").strip()
-                if status != last_status or progress != last_progress:
-                    _log(f"VlogMe status: {status or 'unknown'} progress={progress} stage={stage}")
-                    last_status = status
-                    last_progress = progress
+            with _VlogMeCancelOnSignal(api_root, token, video_id):
+                while time.time() < deadline:
+                    status_doc = _json_request("GET", f"{api_root}/videos/{video_id}", token=token)
+                    status = str(status_doc.get("status") or "").strip().lower()
+                    progress = int(float(status_doc.get("progress") or 0))
+                    stage = str(status_doc.get("stage") or "").strip()
+                    if status != last_status or progress != last_progress:
+                        _log(f"VlogMe status: {status or 'unknown'} progress={progress} stage={stage}")
+                        last_status = status
+                        last_progress = progress
 
-                if status in TERMINAL_SUCCESS:
-                    video_url = str(status_doc.get("video_url") or "").strip()
-                    if not video_url:
-                        raise RuntimeError(f"VlogMe completed without video_url: {status_doc!r}")
-                    out_path = SysPath("/tmp/vlogme-avatar-bridge/avatar.mp4")
-                    _log("downloading completed VlogMe output")
-                    return Path(str(_download_file(video_url, out_path)))
+                    if status in TERMINAL_SUCCESS:
+                        video_url = str(status_doc.get("video_url") or "").strip()
+                        if not video_url:
+                            raise RuntimeError(f"VlogMe completed without video_url: {status_doc!r}")
+                        out_path = SysPath("/tmp/vlogme-avatar-bridge/avatar.mp4")
+                        _log("downloading completed VlogMe output")
+                        return Path(str(_download_file(video_url, out_path)))
 
-                if status in TERMINAL_FAILURE:
-                    message = str(status_doc.get("error_message") or "VlogMe render failed").strip()
-                    raise RuntimeError(message or "VlogMe render failed")
+                    if status in TERMINAL_FAILURE:
+                        message = str(status_doc.get("error_message") or "VlogMe render failed").strip()
+                        raise RuntimeError(message or "VlogMe render failed")
 
-                time.sleep(poll_interval)
+                    time.sleep(poll_interval)
         except KeyboardInterrupt:
             _try_cancel_vlogme_job(api_root, token, video_id, "replicate_interrupted")
             raise
