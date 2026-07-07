@@ -23,7 +23,7 @@ VLOGME_JOB_ACCEPTED_RE = re.compile(
 CANCELLED_BY_USER_MARKER = "Cancelled by user"
 
 
-def _request(method: str, url: str, *, token: str, body: dict | None = None) -> dict:
+def _request(method: str, url: str, *, token: str, body: dict | None = None, timeout: int = 120) -> dict:
     data = None
     headers = {
         "Authorization": f"Bearer {token}",
@@ -35,7 +35,7 @@ def _request(method: str, url: str, *, token: str, body: dict | None = None) -> 
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=120) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
