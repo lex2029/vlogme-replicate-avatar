@@ -13,6 +13,12 @@ from typing import Any
 
 from cog import BasePredictor, Input, Path, Secret
 
+try:
+    from cog import CancelationException
+except Exception:
+    class CancelationException(BaseException):
+        pass
+
 
 DEFAULT_VLOGME_API_URL = "https://vlogme.ai/api/public/v1"
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
@@ -260,8 +266,8 @@ class Predictor(BasePredictor):
                         raise RuntimeError(message or "VlogMe render failed")
 
                     time.sleep(poll_interval)
-        except KeyboardInterrupt:
-            _try_cancel_vlogme_job(api_root, token, video_id, "replicate_interrupted")
+        except (KeyboardInterrupt, CancelationException, _ReplicatePredictionCancelled):
+            _try_cancel_vlogme_job(api_root, token, video_id, "replicate_cancelled")
             raise
 
         _try_cancel_vlogme_job(api_root, token, video_id, "replicate_bridge_timeout")
