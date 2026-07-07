@@ -15,6 +15,18 @@ on:
         description: "Optional exact version id. Defaults to the latest model version."
         required: false
         default: ""
+      min_instances:
+        description: "Optional minimum warm instances. Use 1 to avoid cold starts on the deployment."
+        required: false
+        default: ""
+      max_instances:
+        description: "Optional maximum instances for autoscaling."
+        required: false
+        default: ""
+      hardware:
+        description: "Optional hardware SKU override."
+        required: false
+        default: ""
 
 jobs:
   update_deployment:
@@ -27,6 +39,9 @@ jobs:
           MODEL_NAME: ${{ inputs.model_name }}
           DEPLOYMENT: ${{ inputs.deployment }}
           VERSION: ${{ inputs.version }}
+          MIN_INSTANCES: ${{ inputs.min_instances }}
+          MAX_INSTANCES: ${{ inputs.max_instances }}
+          HARDWARE: ${{ inputs.hardware }}
         run: |
           python3 - <<'PY'
           import json
@@ -39,6 +54,9 @@ jobs:
           model_name = os.environ["MODEL_NAME"].strip()
           deployment = os.environ["DEPLOYMENT"].strip()
           version = os.environ["VERSION"].strip()
+          min_instances = os.environ["MIN_INSTANCES"].strip()
+          max_instances = os.environ["MAX_INSTANCES"].strip()
+          hardware = os.environ["HARDWARE"].strip()
 
           def request(method, url, body=None):
               data = None
@@ -67,13 +85,28 @@ jobs:
               if not version:
                   raise RuntimeError(f"Latest version has no id: {results[0]!r}")
 
-          print(f"Updating deployment {deployment} to version {version}")
-          updated = request("PATCH", f"{api_root}/deployments/{deployment}", {"version": version})
+          body = {"version": version}
+          if min_instances:
+              body["min_instances"] = int(min_instances)
+          if max_instances:
+              body["max_instances"] = int(max_instances)
+          if hardware:
+              body["hardware"] = hardware
+
+          print(f"Updating deployment {deployment}: {json.dumps(body, sort_keys=True)}")
+          updated = request("PATCH", f"{api_root}/deployments/{deployment}", body)
+          release = updated.get("current_release") or {}
+          config = release.get("configuration") or {}
           print(json.dumps(
               {
+                  "owner": updated.get("owner"),
                   "name": updated.get("name"),
-                  "version": updated.get("version"),
-                  "hardware": updated.get("hardware"),
+                  "release": release.get("number"),
+                  "model": release.get("model"),
+                  "version": release.get("version"),
+                  "hardware": config.get("hardware"),
+                  "min_instances": config.get("min_instances"),
+                  "max_instances": config.get("max_instances"),
               },
               indent=2,
           ))
