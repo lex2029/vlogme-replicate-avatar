@@ -1,64 +1,99 @@
 # Architecture
 
-## Goal
+## Public Bridge
 
-Package the VlogMe avatar generator as a standalone Replicate model.
-
-The model should do one thing well:
+The public Replicate model is intentionally small:
 
 ```text
-avatar image + speech audio -> avatar MP4
+avatar image + speech audio -> VlogMe render job -> avatar MP4
 ```
 
-It should not poll VlogMe, claim jobs, write Supabase rows, lease RTX media
-workers, call the VlogMe server, or manage B200/B300 commander state.
+The bridge image runs on CPU. It does not bundle model weights and does not run
+the full avatar neural network inside the Replicate container. Its job is to:
 
-## Current Bridge
+1. Receive an image and audio file from Replicate.
+2. Convert those inputs into VlogMe API payloads.
+3. Create a VlogMe public API render job.
+4. Poll the render status until it completes or fails.
+5. Download the completed MP4 and return it to Replicate.
+6. Forward Replicate cancellation signals into the VlogMe job when possible.
 
-The current runtime already has a useful avatar-only path:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Replicate
+    participant Bridge as VlogMe bridge predictor
+    participant API as VlogMe API
+    participant Worker as VlogMe avatar worker
 
-- `avalife.model.main` starts the resident LiveAvatar model runtime.
-- `avalife.worker.smartblog_jobs.SmartBlogRenderJobsMixin` prepares avatar
-  inputs, one-pass liveaudio chunks, subtitles/watermark/background music, and
-  final MP4 files.
-- `_smartblog_render_video_job()` returns a `SmartBlogRenderFinalizePlan`.
+    User->>Replicate: image + speech audio
+    Replicate->>Bridge: predict()
+    Bridge->>API: POST /api/public/v1/videos
+    API->>Worker: queue render
+    Bridge->>API: poll /videos/:id
+    Worker-->>API: completed video_url
+    Bridge->>API: download MP4
+    Bridge-->>Replicate: avatar.mp4
+    Replicate-->>User: output URL
+```
 
-The Cog predictor uses that render path directly and stops before upload/finalize.
+## Public Inputs
 
-## First Version
+- `avatar_image`: required image input.
+- `audio`: required speech audio input.
+- `live_subtitles`: optional boolean, default `true`.
 
-Inputs:
+The bridge always requests:
 
-- `avatar_image`: required image.
-- `audio`: required speech audio.
+- vertical `9:16` output,
+- center crop from the input image,
+- top watermark `Created by VlogMe.AI`.
 
-The first Replicate-facing API intentionally exposes no prompt. The model uses a
-small internal default prompt. Later, Gemini can inspect the image and create the
-visual prompt automatically inside the model wrapper.
+Aspect ratio and watermark controls are intentionally not exposed in the public
+Replicate schema.
 
-Advanced runtime choices stay environment-driven for now:
+## Private Runtime Path
 
-- `VLOGME_AVATAR_SIZE_PROFILE=b200|b300`
-- `VLOGME_AVATAR_GPU_LAYOUT=passthrough|split|dit2|single`
-- `VLOGME_AVATAR_SAMPLE_STEPS`
-- `VLOGME_AVATAR_SEED`
-- `VLOGME_AVATAR_FACE_RESTORE`
-- `VLOGME_AVATAR_BACKGROUND_RESTORE`
+The repository also contains a heavy GPU Cog package:
 
-Replicate `gpu-a100-large-2x` defaults to `passthrough`: GPU 0 handles
-DiT/denoise and GPU 1 handles VAE/decode/stream-file/post-VAE work. The default
-passthrough window uses 32 output frames of KV history to reduce hard jumps at
-clip boundaries. `dit2` remains available only as an explicit benchmark mode.
+- `run.py`
+- `cog.yaml`
+- `runtime/SmartBlog-Live/`
 
-Output:
+That path is for private runtime experiments and deployment work. It can run the
+avatar model directly when the required weights and GPU hardware are available.
+It is kept in this repository so the public bridge and the lower-level runtime
+interface can evolve together.
 
-- Local MP4 returned as `cog.Path`.
+The current heavy runtime profiles include:
 
-## Later
+- A100 2x passthrough layout: denoise on one GPU, VAE/decode/post-VAE work on
+  the other GPU.
+- Alternative DiT sharding modes for A/B testing.
+- Environment-driven quality controls such as size, steps, face restore, FP8,
+  and compile toggles.
 
-- Add optional text-to-speech as a separate mode.
-- Add a VlogMe provider adapter that creates Replicate predictions and handles
-  webhooks/polling.
-- Add CI/CD with private Replicate test model.
-- Split the vendored runtime into a real upstream dependency once the interface
+Model weights, private server credentials, local logs, and generated outputs are
+not committed.
+
+## Deployment Strategy
+
+For public traffic, prefer the Replicate deployment:
+
+```text
+lex2029/vlogme-avatar-bridge-cpu
+```
+
+It can be kept warm with `min_instances=1` while the actual avatar render work
+stays inside the VlogMe render fleet. This gives Replicate users a simple
+model-shaped API while VlogMe keeps ownership of queueing, billing checks,
+post-processing, subtitles, watermarking, and cancellation.
+
+## Future Work
+
+- Add more public examples and stable sample outputs.
+- Add optional text-to-speech as a separate public input mode.
+- Keep the public schema small while exposing richer paid controls through the
+  VlogMe web app and VlogMe API.
+- Split the vendored runtime into a clean package once the lower-level interface
   stabilizes.

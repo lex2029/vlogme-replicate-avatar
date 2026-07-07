@@ -1,132 +1,180 @@
-# VlogMe Replicate Avatar
+# VlogMe Avatar for Replicate
 
-Replicate/Cog package for the VlogMe avatar renderer and the lightweight
-Replicate-to-VlogMe bridge.
+Turn a centered photo and a speech audio file into a vertical talking-avatar MP4
+through Replicate.
 
-This repo is intentionally separate from the VlogMe app and from the RunPod/Vast
-commander architecture. Its first job is narrow: accept one avatar image plus one
-speech audio file and return a generated avatar MP4.
+<p align="center">
+  <a href="https://replicate.com/lex2029/vlogme-avatar-bridge">
+    <img alt="Run on Replicate" src="https://img.shields.io/badge/Run_on-Replicate-000000?style=for-the-badge">
+  </a>
+  <a href="https://vlogme.ai">
+    <img alt="VlogMe.AI" src="https://img.shields.io/badge/VlogMe.AI-Web_app-5D5FEF?style=for-the-badge">
+  </a>
+  <a href="https://vlogme.ai/docs/api">
+    <img alt="API docs" src="https://img.shields.io/badge/API-Docs-2EA44F?style=for-the-badge">
+  </a>
+</p>
 
-## Shape
+<p align="center">
+  <a href="https://replicate.com/lex2029/vlogme-avatar-bridge">Run the public model</a>
+  ·
+  <a href="https://vlogme.ai">Open VlogMe.AI</a>
+  ·
+  <a href="https://vlogme.ai/docs/api">Read the API docs</a>
+</p>
 
-- `run.py` is the heavy GPU Cog predictor interface.
-- `run_bridge.py` is the lightweight bridge predictor. It accepts the same
-  avatar image plus speech audio shape, creates a VlogMe public API render job,
-  waits for our worker to finish it, downloads the completed MP4, and returns
-  that file to Replicate.
-- `cog.yaml` builds the heavy A100 avatar image.
-- `cog.bridge.yaml` builds the cheap CPU bridge image.
-- `runtime/SmartBlog-Live/` is a vendored snapshot of the current avatar runtime.
-- Model weights are not committed. Put them under `weights/` locally, or set
-  `VLOGME_AVATAR_ASSET_ROOT=/path/to/assets`.
-- On first start, `VLOGME_AVATAR_PRESEED_MODE` defaults to `verify-or-preseed`,
-  so a fresh container will verify local weights and then try to download missing
-  assets.
-- The default runtime profile targets Replicate `gpu-a100-large-2x`:
-  `VLOGME_AVATAR_GPU_LAYOUT=passthrough`. Passthrough runs DiT/denoise on GPU 0
-  and keeps GPU 1 dedicated to VAE/decode/stream-file/post-VAE work. It uses
-  32-frame inference windows, 4 latent frames per Wan block, and a 32-frame KV
-  cache so the denoise side keeps one full output window of history. Use
-  `VLOGME_AVATAR_GPU_LAYOUT=dit2` only for explicit A/B tests where both A100
-  cards should shard DiT/denoise. The default first-pass Replicate canvas is
-  portrait `704*384` (Wan/model order is height*width), with 6 inference steps
-  and PostVAE/GFPGAN face restore disabled. When face restore is explicitly
-  enabled, file rendering restores faces on the PostVAE x2 layer and uses the
-  official GFPGAN/enchenh2d crop-paste path instead of the experimental batch
-  overlay path. The B300-style native-first path can still be A/B tested with
-  `face_restore_stage=native_first`, and the old batch paste path with
-  `LIVE_RAW_POST_VAE_FACE_PASTE_MODE=batch`.
-  The public `predict()` input also accepts
-  `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
-  `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
-  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. For GFPGAN
-  diagnostics only, pass `debug_face_crops=1`; the prediction returns a zip
-  containing `avatar.mp4` plus aligned/restored/composited face crop JPEGs.
-- A100 acceleration defaults are conservative: BF16/TF32 enabled, merged
-  LiveAvatar checkpoint enabled, cuDNN SDPA allowed, external FlashAttention
-  disabled, FP8 off, and `torch.compile` off. Compile can be tested with
-  `VLOGME_AVATAR_ENABLE_COMPILE=true`; it is restricted to the stable head
-  region and skips the dynamic live KV-cache/rope paths.
-- The heavy GPU test only needs `hf_token` if runtime weights must be pulled
-  from Hugging Face. The bridge needs `VLOGME_API_TOKEN` configured in the
-  Replicate runtime. The bridge image publish workflow creates
-  `.replicate_runtime/vlogme_api_token` from the GitHub Actions secret before
-  `cog push`, so the public Replicate schema does not expose a token input.
-  The generated file is ignored by git and must never be committed.
+<p align="center">
+  <img
+    src="test_assets/friendly_ai_presenter.jpg"
+    alt="Friendly AI presenter sample input"
+    width="320"
+  >
+</p>
 
-## First Local Test
+## What It Does
 
-On a GPU machine with Cog and Docker:
+VlogMe Avatar accepts:
+
+- `avatar_image`: a portrait, presenter, character, or other centered face image.
+- `audio`: spoken audio to animate.
+- `live_subtitles`: optional word-level subtitles, enabled by default.
+
+The output is always a vertical `9:16` MP4. VlogMe uses the center of the input
+image for the final crop, so results are best when the face or presenter is near
+the middle of the photo. Public Replicate generations include the top watermark
+`Created by VlogMe.AI`.
+
+## Quick Start
+
+The fastest path is the public Replicate model page:
+
+[replicate.com/lex2029/vlogme-avatar-bridge](https://replicate.com/lex2029/vlogme-avatar-bridge)
+
+You can also run the included sample from this repository:
 
 ```bash
-cd /Users/alekseibabkin/Documents/vlogme-replicate-avatar
+export REPLICATE_API_TOKEN="your_replicate_token"
+python3 examples/run_replicate_prediction.py
+```
+
+The example uses:
+
+- [`test_assets/friendly_ai_presenter.jpg`](test_assets/friendly_ai_presenter.jpg)
+- [`test_assets/presenter_8s.wav`](test_assets/presenter_8s.wav)
+- subtitles enabled
+
+For a longer render:
+
+```bash
+python3 examples/run_replicate_prediction.py \
+  --audio test_assets/presenter_30s.wav \
+  --timeout-sec 2400
+```
+
+## API Example
+
+The example script uses Replicate's HTTP API directly:
+
+```python
+payload = {
+    "version": latest_version_id,
+    "input": {
+        "avatar_image": "data:image/jpeg;base64,...",
+        "audio": "data:audio/wav;base64,...",
+        "live_subtitles": True,
+    },
+}
+```
+
+See [`examples/`](examples/) for a complete runnable script.
+
+## Repository Layout
+
+```text
+.
+├── run_bridge.py                 # Public Replicate bridge predictor
+├── cog.bridge.yaml               # Cheap CPU Cog image for the bridge
+├── run.py                        # Heavy GPU avatar predictor interface
+├── cog.yaml                      # Heavy GPU Cog image
+├── runtime/SmartBlog-Live/       # Vendored avatar runtime snapshot
+├── test_assets/                  # Small public sample image/audio inputs
+├── examples/                     # Public API examples
+├── docs/replicate-model-readme.md
+└── .github/workflows/            # Manual publish/test workflows
+```
+
+## Architecture
+
+The public Replicate model is a lightweight bridge. It does not load model
+weights inside the CPU container. Instead, it accepts files from Replicate,
+creates a VlogMe render job through the VlogMe public API, waits for the render
+fleet to finish, and returns the completed MP4 to Replicate.
+
+```mermaid
+flowchart LR
+    A["Photo"] --> R["Replicate model"]
+    B["Speech audio"] --> R
+    R --> V["VlogMe API"]
+    V --> W["VlogMe avatar workers"]
+    W --> O["Vertical MP4"]
+    O --> R
+```
+
+The repository also keeps the heavier GPU Cog package used for A100/B200/B300
+experiments and private runtime work. The public model currently points to the
+bridge path because it is easier to keep warm, cheaper to operate, and lets the
+VlogMe render fleet own post-processing, subtitles, watermarking, cancellation,
+and queue behavior.
+
+## Local Development
+
+Bridge smoke test:
+
+```bash
+export REPLICATE_API_TOKEN="your_replicate_token"
+python3 examples/run_replicate_prediction.py
+```
+
+Heavy GPU local testing requires Cog, Docker, model weights, and a GPU machine:
+
+```bash
 mkdir -p weights
 cog run -i avatar_image=@/path/to/avatar.png -i audio=@/path/to/speech.wav
 ```
 
-The first test should use an already prepared speech WAV/MP3. Text-to-speech can
-be added later as a separate optional path. The public bridge interface is kept
-simple on purpose: image in, audio in, optional subtitles toggle, MP4 out.
-Prompting is internal for now and can later be generated from the image with
-Gemini. The bridge always requests a vertical 9:16 render. VlogMe accepts almost
-any reference photo, then uses the center of the image for the vertical crop, so
-faces/presenters should be near the middle. Replicate bridge generations always
-include the top watermark `Created by VlogMe.AI`.
+Model weights and runtime secrets are intentionally not committed.
 
-## Replicate Publish
+## Maintainer Workflows
 
-Create a private model on Replicate, then:
+Manual GitHub Actions workflows are included for maintainers:
 
-```bash
-cog push r8.im/<owner>/<model-name>
-```
+- `Push to Replicate`: publishes either `cog.yaml` or `cog.bridge.yaml`.
+- `Update Replicate Model Metadata`: syncs the public model README/description.
+- `Test Replicate Bridge Prediction`: runs a bridge smoke test.
+- `Cancel Active Replicate Predictions`: cancels active predictions for a model
+  or deployment.
+- `Update Replicate Deployment`: updates deployment version, hardware, and warm
+  instance settings.
 
-If the local machine does not have Docker/Cog, push this repository to GitHub
-and run the `Push to Replicate` workflow. It expects a GitHub Actions secret
-named `REPLICATE_CLI_AUTH_TOKEN`.
+Required GitHub Actions secrets:
 
-For the bridge image, use the same workflow with:
+- `REPLICATE_API_TOKEN`
+- `REPLICATE_CLI_AUTH_TOKEN`
+- `VLOGME_API_TOKEN`
 
-- `model_name`: for example `lex2029/vlogme-avatar-bridge`
-- `cog_config`: `cog.bridge.yaml`
+Do not commit `.env` files, `.replicate_runtime/`, model weights, private server
+keys, or generated logs.
 
-The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
+## Links
 
-- `REPLICATE_API_TOKEN` for the Replicate API.
-- A Replicate deployment, for example `lex2029/vlogme-avatar-bridge-cpu`, with
-  a bridge image published by the `Push to Replicate` workflow. That workflow
-  creates the runtime token file from the GitHub Actions secret before `cog
-  push`, so smoke predictions do not need a token input. The bridge submits
-  through `POST /api/public/v1/videos` and polls `GET
-  /api/public/v1/videos/:id`.
-- The GitHub Actions secret `VLOGME_API_TOKEN` is only needed when the smoke
-  workflow verifies cooperative cancellation against the VlogMe API. The bridge
-  publish workflow also uses that secret to create the runtime token file inside
-  the Replicate image.
-- For cancellation handoff, pass the VlogMe Replicate webhook URL when creating
-  predictions:
-  `https://vlogme.ai/api/public/v1/replicate/webhook`, with events
-  `logs,completed`. The smoke workflow exposes this as `webhook_url` and
-  `webhook_events`.
-- The bridge exposes `live_subtitles` as the only user-facing render toggle.
-  Subtitles are on by default and can be disabled. Aspect ratio is always
-  vertical `9:16`, and the top watermark is always `Created by VlogMe.AI`.
+- Product: [VlogMe.AI](https://vlogme.ai)
+- VlogMe API docs: [vlogme.ai/docs/api](https://vlogme.ai/docs/api)
+- Replicate model: [lex2029/vlogme-avatar-bridge](https://replicate.com/lex2029/vlogme-avatar-bridge)
+- Replicate model README source: [`docs/replicate-model-readme.md`](docs/replicate-model-readme.md)
 
-The `Cancel Active Replicate Predictions` workflow scans recent Replicate
-predictions and cancels active `starting`/`processing` jobs for a model or
-deployment. Use it before switching from the heavy A100 deployment to the bridge
-deployment if a long render is still running.
+## License
 
-Use a deployment for production traffic so min/max instances, hardware, and
-rolling updates are controlled outside the VlogMe app.
-
-## Runtime Notes
-
-The wrapper starts the LiveAvatar model runtime once in `setup()` and keeps it
-warm for subsequent `predict()` calls. `predict()` now calls the model runtime
-directly with a single `InferRequest` and direct stream-file MP4 output. It does
-not create a SmartBlog render job, claim, mock state, VlogMe job poll, Supabase
-upload, Hunyuan, MMAudio, or remote edge handoff.
-
-The output is returned to Replicate as a local file. VlogMe should upload/store
-the result from its own backend after receiving the Replicate prediction output.
+This repository is currently source-available for the VlogMe Replicate wrapper
+and deployment workflow. No open-source license is granted unless a `LICENSE`
+file is added. Model weights, VlogMe service credentials, and production runtime
+assets are not included.
