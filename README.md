@@ -1,6 +1,7 @@
 # VlogMe Replicate Avatar
 
-Replicate/Cog package for the VlogMe avatar renderer.
+Replicate/Cog package for the VlogMe avatar renderer and the lightweight
+Replicate-to-VlogMe bridge.
 
 This repo is intentionally separate from the VlogMe app and from the RunPod/Vast
 commander architecture. Its first job is narrow: accept one avatar image plus one
@@ -8,7 +9,13 @@ speech audio file and return a generated avatar MP4.
 
 ## Shape
 
-- `run.py` is the Cog predictor interface.
+- `run.py` is the heavy GPU Cog predictor interface.
+- `run_bridge.py` is the lightweight bridge predictor. It accepts the same
+  avatar image plus speech audio shape, creates a VlogMe public API render job,
+  waits for our worker to finish it, downloads the completed MP4, and returns
+  that file to Replicate.
+- `cog.yaml` builds the heavy A100 avatar image.
+- `cog.bridge.yaml` builds the cheap CPU bridge image.
 - `runtime/SmartBlog-Live/` is a vendored snapshot of the current avatar runtime.
 - Model weights are not committed. Put them under `weights/` locally, or set
   `VLOGME_AVATAR_ASSET_ROOT=/path/to/assets`.
@@ -40,7 +47,11 @@ speech audio file and return a generated avatar MP4.
   disabled, FP8 off, and `torch.compile` off. Compile can be tested with
   `VLOGME_AVATAR_ENABLE_COMPILE=true`; it is restricted to the stable head
   region and skips the dynamic live KV-cache/rope paths.
-- Secrets are not needed for the first audio-driven avatar test.
+- The heavy GPU test only needs `hf_token` if runtime weights must be pulled
+  from Hugging Face. The bridge needs a VlogMe API token, passed as the
+  `vlogme_api_token` Replicate Secret input or, for private/internal runtime
+  environments that support secrets, exposed as `VLOGME_API_TOKEN`. Do not bake
+  that token into the image.
 
 ## First Local Test
 
@@ -68,6 +79,23 @@ cog push r8.im/<owner>/<model-name>
 If the local machine does not have Docker/Cog, push this repository to GitHub
 and run the `Push to Replicate` workflow. It expects a GitHub Actions secret
 named `REPLICATE_CLI_AUTH_TOKEN`.
+
+For the bridge image, use the same workflow with:
+
+- `model_name`: for example `lex2029/vlogme-avatar-bridge`
+- `cog_config`: `cog.bridge.yaml`
+
+The bridge smoke workflow is `Test Replicate Bridge Prediction`. It expects:
+
+- `REPLICATE_API_TOKEN` for the Replicate API.
+- `VLOGME_API_TOKEN` for the VlogMe public API. Use a paid/internal VlogMe API
+  token from `/settings/api`; the bridge submits through
+  `POST /api/public/v1/videos` and polls `GET /api/public/v1/videos/:id`.
+
+The `Cancel Active Replicate Predictions` workflow scans recent Replicate
+predictions and cancels active `starting`/`processing` jobs for a model or
+deployment. Use it before switching from the heavy A100 deployment to the bridge
+deployment if a long render is still running.
 
 Use a deployment for production traffic so min/max instances, hardware, and
 rolling updates are controlled outside the VlogMe app.

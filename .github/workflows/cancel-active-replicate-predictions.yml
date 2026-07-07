@@ -1,0 +1,47 @@
+name: Cancel Active Replicate Predictions
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Optional model filter, for example "lex2029/vlogme-avatar"'
+        required: false
+        default: "lex2029/vlogme-avatar"
+      deployment:
+        description: 'Optional deployment filter, for example "lex2029/vlogme-avatar-a100-2x"'
+        required: false
+        default: ""
+      limit:
+        description: "How many recent predictions to scan"
+        required: false
+        default: "100"
+      dry_run:
+        description: "Set to 1 to only print matching active predictions"
+        required: false
+        default: "0"
+
+jobs:
+  cancel_active:
+    name: Cancel active predictions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cancel active predictions
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+        run: |
+          args=(
+            --limit "${{ inputs.limit }}"
+          )
+          if [ -n "${{ inputs.model_name }}" ]; then
+            args+=(--model "${{ inputs.model_name }}")
+          fi
+          if [ -n "${{ inputs.deployment }}" ]; then
+            args+=(--deployment "${{ inputs.deployment }}")
+          fi
+          if [ "${{ inputs.dry_run }}" = "1" ]; then
+            args+=(--dry-run)
+          fi
+          python3 scripts/cancel_replicate_active_predictions.py "${args[@]}"

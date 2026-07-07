@@ -1,0 +1,7 @@
+build:
+  gpu: false
+  python_version: "3.12"
+  python_requirements: requirements-bridge.txt
+  system_packages:
+    - "ca-certificates"
+predict: "run_bridge.py:Predictor"

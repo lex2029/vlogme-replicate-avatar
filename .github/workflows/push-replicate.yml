@@ -6,6 +6,10 @@ on:
       model_name:
         description: 'Replicate model name, for example "vlogme/avatar"'
         required: true
+      cog_config:
+        description: 'Cog config to push: "cog.yaml" for GPU avatar or "cog.bridge.yaml" for VlogMe bridge'
+        required: false
+        default: "cog.yaml"
 
 jobs:
   push_to_replicate:
@@ -26,6 +30,24 @@ jobs:
         with:
           cog-version: "v0.19.3"
           token: ${{ secrets.REPLICATE_CLI_AUTH_TOKEN }}
+
+      - name: Select Cog config
+        env:
+          COG_CONFIG: ${{ inputs.cog_config }}
+        run: |
+          case "$COG_CONFIG" in
+            cog.yaml)
+              echo "Using default cog.yaml"
+              ;;
+            cog.bridge.yaml)
+              cp cog.bridge.yaml cog.yaml
+              echo "Using bridge Cog config"
+              ;;
+            *)
+              echo "Unsupported cog_config: $COG_CONFIG" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Push to Replicate
         run: cog push r8.im/${{ inputs.model_name }}

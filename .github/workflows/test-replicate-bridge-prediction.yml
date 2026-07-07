@@ -1,0 +1,77 @@
+name: Test Replicate Bridge Prediction
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Replicate bridge model name, for example "lex2029/vlogme-avatar-bridge"'
+        required: true
+        default: "lex2029/vlogme-avatar-bridge"
+      deployment:
+        description: 'Optional bridge deployment, for example "lex2029/vlogme-avatar-bridge-cpu"'
+        required: false
+        default: ""
+      image:
+        description: "Repo-relative avatar image path"
+        required: false
+        default: "runtime/SmartBlog-Live/assets/ref_user_photo.jpg"
+      audio:
+        description: "Optional repo-relative WAV path. Empty generates smoke tone audio."
+        required: false
+        default: ""
+      audio_seconds:
+        description: "Generated smoke audio duration when audio is empty."
+        required: false
+        default: "8"
+      timeout_sec:
+        description: "Maximum time to wait for the Replicate prediction"
+        required: true
+        default: "1800"
+      poll_sec:
+        description: "Replicate polling interval in seconds"
+        required: false
+        default: "15"
+      vlogme_api_url:
+        description: "VlogMe API root"
+        required: false
+        default: "https://vlogme.ai/api/public/v1"
+      aspect_ratio:
+        description: "VlogMe output aspect ratio"
+        required: false
+        default: "9:16"
+      face_restore:
+        description: "Face restore strength. -1 keeps VlogMe defaults."
+        required: false
+        default: "-1"
+      live_subtitles:
+        description: "1 enables subtitles, 0 disables."
+        required: false
+        default: "1"
+
+jobs:
+  test_bridge_prediction:
+    name: Test Replicate Bridge Prediction
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Replicate bridge prediction
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          VLOGME_API_TOKEN: ${{ secrets.VLOGME_API_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python3 scripts/test_replicate_bridge_prediction.py \
+            --model "${{ inputs.model_name }}" \
+            --deployment "${{ inputs.deployment }}" \
+            --image "${{ inputs.image }}" \
+            --audio "${{ inputs.audio }}" \
+            --audio-seconds "${{ inputs.audio_seconds }}" \
+            --timeout-sec "${{ inputs.timeout_sec }}" \
+            --poll-sec "${{ inputs.poll_sec }}" \
+            --vlogme-api-url "${{ inputs.vlogme_api_url }}" \
+            --aspect-ratio "${{ inputs.aspect_ratio }}" \
+            --face-restore "${{ inputs.face_restore }}" \
+            --live-subtitles "${{ inputs.live_subtitles }}"

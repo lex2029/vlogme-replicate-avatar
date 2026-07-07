@@ -1,0 +1,2 @@
+# The bridge image intentionally uses only the Python standard library plus Cog.
+# Keep this file light: real rendering happens inside VlogMe workers.
