@@ -36,7 +36,9 @@ speech audio file and return a generated avatar MP4.
   The public `predict()` input also accepts
   `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
-  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable.
+  `VLOGME_AVATAR_FACE_RESTORE` after the baseline path is stable. For GFPGAN
+  diagnostics only, pass `debug_face_crops=1`; the prediction returns a zip
+  containing `avatar.mp4` plus aligned/restored face crop JPEGs.
 - A100 acceleration defaults are conservative: BF16/TF32 enabled, merged
   LiveAvatar checkpoint enabled, cuDNN SDPA allowed, external FlashAttention
   disabled, FP8 off, and `torch.compile` off. Compile can be tested with

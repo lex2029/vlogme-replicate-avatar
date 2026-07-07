@@ -340,6 +340,19 @@ class PostVAEEnhancer:
         # GFPGAN clean uses fixed 512x512 face features. Smaller crops can pass
         # shape checks until a linear layer fails and poisons the CUDA context.
         self._face_restore_small_crop_size = max(512, int(self._face_restore_small_crop_size))
+        self._debug_face_crops_enabled = bool(_env_flag("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0"))
+        self._debug_face_crops_dir = str(
+            os.getenv("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug")
+            or "/tmp/vlogme-avatar-face-debug"
+        )
+        try:
+            self._debug_face_crops_max = max(
+                1,
+                int(str(os.getenv("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_MAX", "6") or "6").strip()),
+            )
+        except Exception:
+            self._debug_face_crops_max = 6
+        self._debug_face_crops_saved = 0
         self._logged_ready = False
         self._logged_first_invoke = False
         self._logged_first_face_overlay = False
@@ -536,6 +549,44 @@ class PostVAEEnhancer:
             (int(blur_kernel), int(blur_kernel)),
             (float(sigma), float(sigma)),
         ).clamp(0, 1).contiguous()
+
+    def _debug_save_face_crops(self, *, aligned: torch.Tensor, restored: torch.Tensor, prefix: str) -> None:
+        if not bool(getattr(self, "_debug_face_crops_enabled", False)):
+            return
+        remaining = int(getattr(self, "_debug_face_crops_max", 6)) - int(getattr(self, "_debug_face_crops_saved", 0))
+        if remaining <= 0:
+            return
+        try:
+            from pathlib import Path
+
+            from PIL import Image
+
+            debug_dir = Path(str(getattr(self, "_debug_face_crops_dir", "") or "/tmp/vlogme-avatar-face-debug"))
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            aligned_cpu = aligned.detach().to(dtype=torch.float32).clamp(0.0, 1.0).cpu()
+            restored_cpu = restored.detach().to(dtype=torch.float32).clamp(0.0, 1.0).cpu()
+            count = min(int(remaining), int(aligned_cpu.shape[0]), int(restored_cpu.shape[0]))
+            for batch_idx in range(int(count)):
+                save_idx = int(getattr(self, "_debug_face_crops_saved", 0))
+                for label, tensor in (("aligned", aligned_cpu), ("restored", restored_cpu)):
+                    arr = (
+                        tensor[int(batch_idx)]
+                        .mul(255.0)
+                        .round()
+                        .to(torch.uint8)
+                        .permute(1, 2, 0)
+                        .contiguous()
+                        .numpy()
+                    )
+                    Image.fromarray(arr, mode="RGB").save(
+                        debug_dir / f"{str(prefix)}_{save_idx:03d}_{str(label)}.jpg",
+                        quality=95,
+                    )
+                self._debug_face_crops_saved = int(save_idx) + 1
+        except Exception:
+            if not bool(getattr(self, "_logged_debug_face_crops_failure", False)):
+                logging.warning("Post-VAE debug face crop export failed", exc_info=True)
+                self._logged_debug_face_crops_failure = True
 
     @staticmethod
     def _resize_cover_crop_to_output(tensor_01: torch.Tensor, *, out_h: int | None, out_w: int | None) -> torch.Tensor:
@@ -1057,6 +1108,11 @@ class PostVAEEnhancer:
                     profile["restore_sec"] += _phase_dt(restore_t0, device=self.device)
                     if torch.isnan(face_patch).any() or torch.isinf(face_patch).any():
                         continue
+                    self._debug_save_face_crops(
+                        aligned=original_crop,
+                        restored=face_patch,
+                        prefix=str(overlay_mode or "face"),
+                    )
                     if blend < 1.0:
                         blend_t0 = time.perf_counter()
                         face_patch = (face_patch * blend) + (original_crop * (1.0 - blend))

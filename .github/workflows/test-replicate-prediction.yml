@@ -83,6 +83,10 @@ on:
         description: "Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop."
         required: false
         default: "-1"
+      debug_face_crops:
+        description: "Debug only: -1 default, 1 returns a zip with avatar.mp4 plus aligned/restored GFPGAN face crops."
+        required: false
+        default: "-1"
       stream_file_interpolation:
         description: "Optional interpolation override: torch-rife, off, or empty for default."
         required: false
@@ -136,6 +140,7 @@ jobs:
             --audio-seconds "${{ inputs.audio_seconds }}" \
             --face-restore "${{ inputs.face_restore }}" \
             --face-source-x2 "${{ inputs.face_source_x2 }}" \
+            --debug-face-crops "${{ inputs.debug_face_crops }}" \
             --stream-file-interpolation "${{ inputs.stream_file_interpolation }}" \
             --output-fps "${{ inputs.output_fps }}" \
             --stream-file-nvvfx "${{ inputs.stream_file_nvvfx }}" \

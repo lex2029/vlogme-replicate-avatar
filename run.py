@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path as SysPath
 
 from cog import BasePredictor, Input, Path, Secret
@@ -70,6 +71,32 @@ def _log_stream_file_progress(output_path: SysPath) -> None:
         f"pack={float(progress.get('pack_sec') or 0.0):.3f}s "
         f"write={float(progress.get('write_sec') or 0.0):.3f}s"
     )
+
+
+def _debug_face_crops_enabled() -> bool:
+    return str(os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0") or "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _make_debug_archive(*, run_root: SysPath, final_path: SysPath) -> SysPath | None:
+    if not _debug_face_crops_enabled():
+        return None
+    debug_dir = SysPath(os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug"))
+    crop_paths = sorted(path for path in debug_dir.glob("*.jpg") if path.is_file()) if debug_dir.exists() else []
+    if not crop_paths:
+        _log("debug face crops requested but no crop JPEGs were produced")
+        return None
+    archive_path = run_root / "avatar-debug.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(final_path, "avatar.mp4")
+        for path in crop_paths:
+            archive.write(path, f"face_crops/{path.name}")
+    _log(f"debug face crops archived: files={len(crop_paths)} path={archive_path}")
+    return archive_path
 
 
 def _copy_input(src: Path, dst: SysPath) -> SysPath:
@@ -228,6 +255,9 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
     os.environ.setdefault("LIVE_RAW_POST_VAE_UPSCALE_X2", "1")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_MAX", "6")
     os.environ.setdefault("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384")
     os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.0")
     os.environ.setdefault("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0")
@@ -398,6 +428,11 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
         ),
         "LIVE_RAW_POST_VAE_UPSCALE_X2": os.environ.get("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"),
         "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"),
+        "LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS": os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0"),
+        "LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR": os.environ.get(
+            "LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug"
+        ),
+        "LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_MAX": os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_MAX", "6"),
         "SMARTBLOG_MEDIA_TRT_MAX_DIM": os.environ.get("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384"),
         "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE": os.environ.get(
             "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE", "1"
@@ -537,6 +572,7 @@ class Predictor(BasePredictor):
         motion_file: int = -1,
         motion_mode: str = "",
         face_source_x2: int = -1,
+        debug_face_crops: int = -1,
         stream_file_nvvfx: int = -1,
         nvvfx_quality: str = "",
     ) -> None:
@@ -620,6 +656,16 @@ class Predictor(BasePredictor):
             requested["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = "1" if face_source_override == 1 else "0"
 
         try:
+            debug_face_override = int(debug_face_crops)
+        except Exception:
+            debug_face_override = 0
+        if debug_face_override in {0, 1}:
+            requested["LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS"] = "1" if debug_face_override == 1 else "0"
+            requested["LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR"] = os.environ.get(
+                "LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug"
+            )
+
+        try:
             nvvfx_override = int(stream_file_nvvfx)
         except Exception:
             nvvfx_override = -1
@@ -664,6 +710,11 @@ class Predictor(BasePredictor):
             "VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"
         )
         os.environ["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
+        os.environ["LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS"] = os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0")
+        if os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS", "0") == "1":
+            debug_dir = SysPath(os.environ.get("LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS_DIR", "/tmp/vlogme-avatar-face-debug"))
+            shutil.rmtree(debug_dir, ignore_errors=True)
+            debug_dir.mkdir(parents=True, exist_ok=True)
         _append_replicate_profile_overrides(
             self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
@@ -683,6 +734,7 @@ class Predictor(BasePredictor):
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
             f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "
+            f"debug_face_crops={os.environ.get('LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"nvvfx_quality={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX_QUALITY', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
@@ -781,6 +833,10 @@ class Predictor(BasePredictor):
             description="Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop.",
             default=-1,
         ),
+        debug_face_crops: int = Input(
+            description="Debug only: -1 default, 1 returns a zip with avatar.mp4 plus aligned/restored GFPGAN face crops.",
+            default=-1,
+        ),
         face_restore: float = Input(
             description="GFPGAN face restore strength from 0.0 to 1.0. -1 keeps the deployment default.",
             default=-1.0,
@@ -824,6 +880,7 @@ class Predictor(BasePredictor):
             motion_file=motion_file,
             motion_mode=motion_mode,
             face_source_x2=face_source_x2,
+            debug_face_crops=debug_face_crops,
             stream_file_nvvfx=stream_file_nvvfx,
             nvvfx_quality=nvvfx_quality,
         )
@@ -1013,6 +1070,7 @@ class Predictor(BasePredictor):
             f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"face_affine_cpu={os.environ.get('LIVE_RAW_POST_VAE_FACE_AFFINE_CPU', '')} "
             f"face_mask={os.environ.get('LIVE_RAW_POST_VAE_FACE_MASK_MODE', '')} "
+            f"debug_face_crops={os.environ.get('LIVE_RAW_POST_VAE_DEBUG_FACE_CROPS', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"audio={audio_duration_sec:.2f}s infer_frames={infer_frames} clips={num_clip} steps={sample_steps}"
         )
@@ -1035,5 +1093,8 @@ class Predictor(BasePredictor):
         if output_path.resolve() != final_path.resolve():
             shutil.copyfile(str(output_path), str(final_path))
             _log_stream_file_progress(final_path)
+        debug_archive = _make_debug_archive(run_root=run_root, final_path=final_path)
         _log(f"prediction finished in {time.monotonic() - prediction_started_at:.1f}s")
+        if debug_archive is not None:
+            return Path(str(debug_archive))
         return Path(str(final_path))
