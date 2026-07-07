@@ -226,7 +226,7 @@ def _set_default_env(asset_root: SysPath) -> None:
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_MAX_STRENGTH", "1.0")
     os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512")
     os.environ.setdefault("LIVE_RAW_POST_VAE_UPSCALE_X2", "1")
-    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "1")
+    os.environ.setdefault("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
     os.environ.setdefault("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384")
     os.environ.setdefault("VLOGME_AVATAR_FACE_RESTORE", "0.0")
     os.environ.setdefault("VLOGME_AVATAR_BACKGROUND_RESTORE", "0.0")
@@ -395,7 +395,7 @@ def _append_replicate_profile_overrides(asset_root: SysPath, *, size_profile: st
             "LIVE_RAW_POST_VAE_FACE_RESTORE_SMALL_CROP_SIZE", "512"
         ),
         "LIVE_RAW_POST_VAE_UPSCALE_X2": os.environ.get("LIVE_RAW_POST_VAE_UPSCALE_X2", "1"),
-        "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "1"),
+        "LIVE_RAW_POST_VAE_FACE_SOURCE_X2": os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0"),
         "SMARTBLOG_MEDIA_TRT_MAX_DIM": os.environ.get("SMARTBLOG_MEDIA_TRT_MAX_DIM", "384"),
         "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE": os.environ.get(
             "SMARTBLOG_STREAM_FILE_POST_VAE_OUTPUT_SIZE", "1"
@@ -534,6 +534,7 @@ class Predictor(BasePredictor):
         infer_frames: int = 0,
         motion_file: int = -1,
         motion_mode: str = "",
+        face_source_x2: int = -1,
         stream_file_nvvfx: int = -1,
         nvvfx_quality: str = "",
     ) -> None:
@@ -610,6 +611,13 @@ class Predictor(BasePredictor):
                 raise RuntimeError(f"Unsupported motion_mode override: {motion_mode_override}")
 
         try:
+            face_source_override = int(face_source_x2)
+        except Exception:
+            face_source_override = -1
+        if face_source_override in {0, 1}:
+            requested["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = "1" if face_source_override == 1 else "0"
+
+        try:
             nvvfx_override = int(stream_file_nvvfx)
         except Exception:
             nvvfx_override = -1
@@ -653,6 +661,7 @@ class Predictor(BasePredictor):
         os.environ["SMARTBLOG_STREAM_FILE_NVVFX_QUALITY"] = os.environ.get(
             "VLOGME_AVATAR_STREAM_FILE_NVVFX_QUALITY", "HIGH"
         )
+        os.environ["LIVE_RAW_POST_VAE_FACE_SOURCE_X2"] = os.environ.get("LIVE_RAW_POST_VAE_FACE_SOURCE_X2", "0")
         _append_replicate_profile_overrides(
             self.asset_root,
             size_profile=os.environ.get("VLOGME_AVATAR_SIZE_PROFILE", "b200").strip().lower() or "b200",
@@ -669,6 +678,7 @@ class Predictor(BasePredictor):
             f"infer_frames={os.environ.get('INFER_FRAMES', '')} "
             f"motion_file={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE', '')} "
             f"motion_mode={os.environ.get('LIVE_STREAM_UPDATE_MOTION_LATENTS_FOR_FILE_MODE', '')} "
+            f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"nvvfx_quality={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX_QUALITY', '')} "
             f"fp8={os.environ.get('USE_FP8', '0')} "
@@ -763,6 +773,10 @@ class Predictor(BasePredictor):
             description="Optional cold-start file-render motion-state mode: latent or decoded.",
             default="",
         ),
+        face_source_x2: int = Input(
+            description="Optional cold-start GFPGAN source override: -1 default, 0 native crop, 1 bicubic x2 crop.",
+            default=-1,
+        ),
         face_restore: float = Input(
             description="GFPGAN face restore strength from 0.0 to 1.0. -1 keeps the deployment default.",
             default=-1.0,
@@ -805,6 +819,7 @@ class Predictor(BasePredictor):
             infer_frames=infer_frames,
             motion_file=motion_file,
             motion_mode=motion_mode,
+            face_source_x2=face_source_x2,
             stream_file_nvvfx=stream_file_nvvfx,
             nvvfx_quality=nvvfx_quality,
         )
@@ -991,6 +1006,7 @@ class Predictor(BasePredictor):
             f"size={size} output={req.stream_file_output_width}x{req.stream_file_output_height} "
             f"fps={fps}->{output_fps} interpolation={stream_file_interpolation or 'off'} "
             f"face_restore={face_restore:.2f} background_restore={background_restore:.2f} "
+            f"face_source_x2={os.environ.get('LIVE_RAW_POST_VAE_FACE_SOURCE_X2', '')} "
             f"nvvfx={os.environ.get('SMARTBLOG_STREAM_FILE_NVVFX', '')} "
             f"audio={audio_duration_sec:.2f}s infer_frames={infer_frames} clips={num_clip} steps={sample_steps}"
         )

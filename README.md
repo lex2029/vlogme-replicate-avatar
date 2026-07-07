@@ -24,9 +24,13 @@ speech audio file and return a generated avatar MP4.
   cards should shard DiT/denoise. The default first-pass Replicate canvas is
   portrait `704*384` (Wan/model order is height*width), with 6 inference steps
   and PostVAE/GFPGAN face restore disabled. When face restore is explicitly
-  enabled, file rendering uses the GFPGAN-compatible inner-square paste mask and
-  can keep PostVAE at the final MP4 size so the face-restored output is not
-  downscaled before encoding.
+  enabled, file rendering follows the GFPGAN-style source path: face detection
+  and aligned 512x512 crop come from the native VAE frame, then the restored face
+  is pasted into the x2/final PostVAE layer with the scaled inverse affine. This
+  avoids feeding GFPGAN a bicubic x2 crop unless `face_source_x2=1` is explicitly
+  requested for A/B testing. The paste path uses the GFPGAN-compatible
+  inner-square mask and can keep PostVAE at the final MP4 size so the
+  face-restored output is not downscaled before encoding.
   The public `predict()` input also accepts
   `sample_steps`; use `4` for smoke tests and `6+` for quality checks. Tune
   `VLOGME_AVATAR_SIZE`, `VLOGME_AVATAR_SAMPLE_STEPS`, and
