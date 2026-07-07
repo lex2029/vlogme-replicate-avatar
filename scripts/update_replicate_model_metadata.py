@@ -42,7 +42,7 @@ def main() -> int:
     parser.add_argument("--model", default="lex2029/vlogme-avatar-bridge")
     parser.add_argument(
         "--description",
-        default="Create a talking-avatar video from a portrait image and speech audio.",
+        default="Create a vertical talking-avatar video from any centered photo and speech audio.",
     )
     parser.add_argument("--readme", default="docs/replicate-model-readme.md")
     parser.add_argument("--github-url", default="https://github.com/lex2029/vlogme-replicate-avatar")

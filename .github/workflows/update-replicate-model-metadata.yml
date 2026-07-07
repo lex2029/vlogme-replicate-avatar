@@ -10,7 +10,7 @@ on:
       description:
         description: "Short model description"
         required: false
-        default: "Create a talking-avatar video from a portrait image and speech audio."
+        default: "Create a vertical talking-avatar video from any centered photo and speech audio."
       readme:
         description: "Repo-relative README path for Replicate model page"
         required: false
