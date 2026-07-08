@@ -48,13 +48,18 @@ through Replicate.
 VlogMe Avatar accepts:
 
 - `avatar_image`: a portrait, presenter, character, or other centered face image.
-- `audio`: spoken audio to animate.
+- `audio`: spoken audio to animate. The public free Replicate demo trims this to
+  the first 10 seconds before rendering.
 - `live_subtitles`: optional word-level subtitles, enabled by default.
 
 The output is always a vertical `9:16` MP4. VlogMe uses the center of the input
 image for the final crop, so results are best when the face or presenter is near
 the middle of the photo. Public Replicate generations include the top watermark
 `Created by VlogMe.AI`.
+
+The 10-second audio trim is a public Replicate demo policy, not a VlogMe platform
+maximum. Longer avatar renders are available through VlogMe.AI and the paid
+VlogMe API.
 
 ## Quick Start
 
@@ -75,13 +80,16 @@ The example uses:
 - [`test_assets/presenter_8s.wav`](test_assets/presenter_8s.wav)
 - subtitles enabled
 
-For a longer render:
+To verify the free-demo trim with a longer file:
 
 ```bash
 python3 examples/run_replicate_prediction.py \
   --audio test_assets/presenter_30s.wav \
   --timeout-sec 2400
 ```
+
+That sample is longer than 10 seconds, but the public Replicate bridge renders
+only its first 10 seconds.
 
 ## API Example
 
@@ -120,8 +128,13 @@ See [`examples/`](examples/) for a complete runnable script.
 
 The public Replicate model is a lightweight bridge. It does not load model
 weights inside the CPU container. Instead, it accepts files from Replicate,
-creates a VlogMe render job through the VlogMe public API, waits for the render
-fleet to finish, and returns the completed MP4 to Replicate.
+trims audio to the first 10 seconds for the free demo, creates a VlogMe render
+job through the VlogMe public API, waits for the render fleet to finish, and
+returns the completed MP4 to Replicate.
+
+The free public bridge is intentionally limited to one active VlogMe render at a
+time. If another free Replicate render is already running, the prediction returns
+a busy/retry-later message instead of starting extra workers.
 
 ```mermaid
 flowchart LR

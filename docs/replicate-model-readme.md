@@ -6,12 +6,14 @@ This public Replicate model is the hosted API version of [VlogMe.AI](https://vlo
 
 You can upload almost any photo. VlogMe uses the center of the image and crops it into a vertical 9:16 frame, so results are best when the face or presenter is near the middle of the image.
 
+This public free Replicate demo trims input audio to the first 10 seconds before rendering. That is a demo policy for this hosted Replicate model, not a VlogMe platform maximum.
+
 If you want the full VlogMe web app with accounts, editing, project history, paid renders, and product updates, visit [vlogme.ai](https://vlogme.ai). If you want to call the avatar generator directly from code, use this Replicate model.
 
 ## Inputs
 
 - `avatar_image`: portrait or presenter reference image. The output is always center-cropped to vertical 9:16.
-- `audio`: speech audio to animate.
+- `audio`: speech audio to animate. The public free Replicate demo uses the first 10 seconds.
 - `live_subtitles`: burn word-level subtitles into the final video. Enabled by default; you can turn it off.
 
 ## Watermark policy
@@ -35,6 +37,8 @@ Every Replicate generation includes a top watermark that says `Created by VlogMe
 ## API notes
 
 The output is a single MP4 file. Predictions can be canceled; active VlogMe render jobs are canceled cooperatively through the bridge.
+
+The free public bridge is limited to one active render at a time. If another free Replicate render is already running, start a new prediction again a few minutes later.
 
 For a broader VlogMe developer workflow, see the VlogMe API docs at [vlogme.ai/docs/api](https://vlogme.ai/docs/api).
 

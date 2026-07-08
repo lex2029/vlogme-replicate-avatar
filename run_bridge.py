@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import signal
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,7 @@ DEFAULT_WATERMARK_TEXT = "Created by VlogMe.AI"
 DEFAULT_TIMEOUT_SEC = 1740
 DEFAULT_POLL_INTERVAL_SEC = 10
 DEFAULT_TOKEN_FILE = ".replicate_runtime/vlogme_api_token"
+FREE_REPLICATE_AUDIO_LIMIT_SEC = 10.0
 TERMINAL_SUCCESS = {"completed", "complete", "succeeded", "success", "done"}
 TERMINAL_FAILURE = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
 
@@ -44,7 +46,7 @@ def _guess_mime(path: SysPath, fallback: str) -> str:
     return guessed or fallback
 
 
-def _data_uri(path: Path, fallback_mime: str) -> str:
+def _data_uri(path: Path | SysPath, fallback_mime: str) -> str:
     src = SysPath(str(path))
     mime = _guess_mime(src, fallback_mime)
     encoded = base64.b64encode(src.read_bytes()).decode("ascii")
@@ -94,6 +96,17 @@ def _json_request(
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 429:
+            try:
+                parsed_detail = json.loads(detail)
+            except Exception:
+                parsed_detail = {}
+            error_obj = parsed_detail.get("error") if isinstance(parsed_detail, dict) else None
+            if isinstance(error_obj, dict):
+                message = str(error_obj.get("message") or "The free Replicate demo is busy.")
+                retry_after = error_obj.get("retry_after")
+                suffix = f" Retry after about {retry_after}s." if retry_after else ""
+                raise RuntimeError(f"{message}{suffix}") from exc
         raise RuntimeError(f"VlogMe API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
     if not raw:
         return {}
@@ -119,6 +132,53 @@ def _download_file(url: str, out_path: SysPath, *, timeout: int = 600) -> SysPat
                 fh.write(chunk)
     if not out_path.exists() or out_path.stat().st_size <= 0:
         raise RuntimeError("Downloaded VlogMe output is empty")
+    return out_path
+
+
+def _trim_audio_for_free_replicate(audio: Path) -> SysPath:
+    src = SysPath(str(audio))
+    if not src.is_file():
+        raise RuntimeError(f"Audio input does not exist: {src}")
+
+    out_path = SysPath("/tmp/vlogme-avatar-bridge/replicate-free-audio-10s.wav")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    _log(
+        "free Replicate demo policy: audio is trimmed to the first "
+        f"{int(FREE_REPLICATE_AUDIO_LIMIT_SEC)} seconds before rendering"
+    )
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(src),
+        "-t",
+        f"{FREE_REPLICATE_AUDIO_LIMIT_SEC:.3f}",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "24000",
+        "-c:a",
+        "pcm_s16le",
+        str(out_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg is required to trim audio for the free Replicate demo") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        if len(detail) > 800:
+            detail = detail[-800:]
+        raise RuntimeError(
+            f"Could not trim audio for the free Replicate demo: {detail or 'ffmpeg failed'}"
+        ) from exc
+
+    if not out_path.exists() or out_path.stat().st_size <= 0:
+        raise RuntimeError("Trimmed audio is empty")
     return out_path
 
 
@@ -178,7 +238,12 @@ class Predictor(BasePredictor):
                 "and crops it for a vertical 9:16 avatar video."
             )
         ),
-        audio: Path = Input(description="Speech audio to animate"),
+        audio: Path = Input(
+            description=(
+                "Speech audio to animate. The public free Replicate demo trims "
+                "audio to the first 10 seconds before rendering."
+            )
+        ),
         live_subtitles: bool = Input(
             description="Burn word-level subtitles into the final video",
             default=True,
@@ -192,14 +257,17 @@ class Predictor(BasePredictor):
         if not api_root:
             raise RuntimeError("VLOGME_API_URL is empty")
 
+        trimmed_audio = _trim_audio_for_free_replicate(audio)
+
         _log("submitting VlogMe render job: vertical_9_16=1 watermark_top=Created by VlogMe.AI")
         create_body: dict[str, Any] = {
             "title": os.environ.get("VLOGME_BRIDGE_DEFAULT_TITLE", DEFAULT_TITLE).strip() or DEFAULT_TITLE,
             "portrait_base64": _data_uri(avatar_image, "image/jpeg"),
-            "audio_base64": _data_uri(audio, "audio/wav"),
+            "audio_base64": _data_uri(trimmed_audio, "audio/wav"),
             "aspect_ratio": DEFAULT_ASPECT_RATIO,
             "live_subtitles": bool(live_subtitles),
             "watermark_text": DEFAULT_WATERMARK_TEXT,
+            "replicate_free": True,
         }
 
         created = _json_request("POST", f"{api_root}/videos", token=token, body=create_body)

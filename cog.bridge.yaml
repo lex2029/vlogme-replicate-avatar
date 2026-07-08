@@ -4,4 +4,5 @@ build:
   python_requirements: requirements-bridge.txt
   system_packages:
     - "ca-certificates"
+    - "ffmpeg"
 predict: "run_bridge.py:Predictor"
