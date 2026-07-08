@@ -1,0 +1,26 @@
+name: Test Replicate Webhook Auth
+
+on:
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Replicate webhook receiver URL"
+        required: true
+        default: "https://vlogme.ai/api/public/v1/replicate/webhook"
+
+jobs:
+  test_replicate_webhook_auth:
+    name: Test Replicate Webhook Auth
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify signed webhook auth
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python3 scripts/test_replicate_webhook_auth.py \
+            --endpoint "${{ inputs.endpoint }}"
