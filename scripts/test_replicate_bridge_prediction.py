@@ -40,7 +40,38 @@ def _request(method: str, url: str, *, token: str, body: dict | None = None, tim
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Replicate API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
+        raise RuntimeError(f"HTTP API {method} {url} failed: HTTP {exc.code}: {detail}") from exc
+
+
+def _request_status(
+    method: str,
+    url: str,
+    *,
+    token: str,
+    body: dict | None = None,
+    timeout: int = 120,
+) -> tuple[int, dict]:
+    data = None
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "User-Agent": "vlogme-replicate-avatar-bridge-test/1.0",
+    }
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+            return response.status, json.loads(raw or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(raw or "{}")
+        except Exception:
+            parsed = {"raw": raw}
+        return exc.code, parsed
 
 
 def _try_cancel(cancel_url: str, *, token: str, prediction_id: str) -> None:
@@ -110,7 +141,19 @@ def _wait_for_vlogme_cancel(
     deadline = time.time() + max(10, int(wait_sec))
     last_seen = ("", -1, "", "")
     while time.time() < deadline:
-        status_doc = _request("GET", f"{api_root}/videos/{video_id}", token=token, timeout=60)
+        http_status, status_doc = _request_status(
+            "GET",
+            f"{api_root}/videos/{video_id}",
+            token=token,
+            timeout=60,
+        )
+        if http_status == 404:
+            print("VlogMe after cancel: not_found; job is no longer visible to the API token")
+            return True
+        if http_status != 200:
+            print(f"VlogMe after cancel: HTTP {http_status} {status_doc}")
+            time.sleep(max(2, int(poll_sec)))
+            continue
         status = str(status_doc.get("status") or "").strip().lower()
         progress = int(float(status_doc.get("progress") or 0))
         stage = str(status_doc.get("stage") or "").strip()
@@ -237,6 +280,26 @@ def main() -> int:
                 if vlogme_job_id:
                     last_vlogme_job_id = vlogme_job_id
                     print(f"VlogMe job observed in logs: {last_vlogme_job_id}")
+                    if vlogme_token:
+                        http_status, status_doc = _request_status(
+                            "GET",
+                            f"{str(args.vlogme_api_url).strip().rstrip('/')}/videos/{last_vlogme_job_id}",
+                            token=vlogme_token,
+                            timeout=60,
+                        )
+                        if http_status != 200:
+                            print(
+                                "VlogMe token visibility check failed before cancel: "
+                                f"HTTP {http_status} {status_doc}",
+                                file=sys.stderr,
+                            )
+                            return 1
+                        print(
+                            "VlogMe token visibility check passed before cancel: "
+                            f"status={status_doc.get('status')} "
+                            f"progress={status_doc.get('progress')} "
+                            f"stage={status_doc.get('stage')}"
+                        )
                     _try_cancel(str(cancel_url or ""), token=replicate_token, prediction_id=str(prediction_id))
                     cancel_requested = True
 
