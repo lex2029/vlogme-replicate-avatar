@@ -13,6 +13,8 @@ from pathlib import Path as SysPath
 
 from cog import BasePredictor, Input, Path, Secret
 
+from replicate_cooldown import reserve_generation_slot
+
 
 ROOT = SysPath(__file__).resolve().parent
 RUNTIME_ROOT = ROOT / "runtime" / "SmartBlog-Live"
@@ -896,6 +898,7 @@ class Predictor(BasePredictor):
             default=None,
         ),
     ) -> Path:
+        reserve_generation_slot()
         _log("predict request accepted")
         if hf_token is not None:
             token = (hf_token.get_secret_value() or "").strip()

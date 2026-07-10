@@ -14,6 +14,8 @@ from typing import Any
 
 from cog import BasePredictor, Input, Path
 
+from replicate_cooldown import reserve_generation_slot
+
 try:
     from cog import CancelationException
 except Exception:
@@ -257,6 +259,7 @@ class Predictor(BasePredictor):
         if not api_root:
             raise RuntimeError("VLOGME_API_URL is empty")
 
+        reserve_generation_slot()
         trimmed_audio = _trim_audio_for_free_replicate(audio)
 
         _log("submitting VlogMe render job: vertical_9_16=1 watermark_top=Created by VlogMe.AI")
