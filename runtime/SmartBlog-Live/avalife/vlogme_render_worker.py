@@ -24,6 +24,10 @@ class VlogMeJobStopped(Exception):
     pass
 
 
+class VlogMeFatalJobError(Exception):
+    pass
+
+
 def _env_flag(name: str, default: str = "0") -> bool:
     raw = str(os.getenv(name, default) or default).strip().lower()
     return raw in {"1", "true", "yes", "on"}
@@ -164,6 +168,23 @@ def _probe_video_summary(path: str) -> dict[str, Any]:
         "duration": float(fmt.get("duration") or video.get("duration") or 0.0),
         "bytes": int(float(str(fmt.get("size") or 0) or 0)),
     }
+
+
+def _media_duration_seconds(path: str) -> float:
+    try:
+        data = _probe(path)
+        fmt = dict(data.get("format") or {})
+        duration = _safe_float(fmt.get("duration"), 0.0)
+        if duration > 0:
+            return float(duration)
+        durations: list[float] = []
+        for stream in list(data.get("streams") or []):
+            value = _safe_float((stream or {}).get("duration"), 0.0)
+            if value > 0:
+                durations.append(float(value))
+        return float(max(durations) if durations else 0.0)
+    except Exception:
+        return 0.0
 
 
 def _download(url: str, path: str) -> int:
@@ -481,6 +502,266 @@ def _negative_prompt(job: dict[str, Any]) -> str:
         or settings.get("negative_prompt")
         or settings.get("negativePrompt")
     )
+
+
+def _claim_frames(job: dict[str, Any]) -> list[dict[str, Any]]:
+    assets = _claim_assets(job)
+    frames = assets.get("frames")
+    if not isinstance(frames, list):
+        return []
+    return [dict(frame) for frame in frames if isinstance(frame, dict)]
+
+
+def _frame_ltx(frame: dict[str, Any]) -> dict[str, Any]:
+    value = frame.get("ltx")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _frame_source_video_url(frame: dict[str, Any]) -> str:
+    return _text(
+        frame.get("source_video_url")
+        or frame.get("sourceVideoUrl")
+        or frame.get("video_url")
+        or frame.get("videoUrl")
+        or frame.get("url")
+    )
+
+
+def _frame_image_url(frame: dict[str, Any]) -> str:
+    return _text(
+        frame.get("image_url")
+        or frame.get("imageUrl")
+        or frame.get("avatar_url")
+        or frame.get("avatarUrl")
+        or frame.get("first_frame_url")
+        or frame.get("firstFrameUrl")
+        or frame.get("photo_url")
+        or frame.get("photoUrl")
+    )
+
+
+def _frame_kind(frame: dict[str, Any]) -> str:
+    kind = _text(frame.get("kind") or frame.get("type")).lower()
+    if _frame_source_video_url(frame):
+        return "video"
+    if kind in {"ltx", "ltxv", "ltx-video", "ltx_video", "hunyuan", "visual_scene"}:
+        return "ltx"
+    if kind in {"video", "avatar"}:
+        return kind
+    if _frame_ltx(frame):
+        return "ltx"
+    prompt = _text(
+        frame.get("prompt")
+        or frame.get("video_prompt")
+        or frame.get("videoPrompt")
+        or _frame_ltx(frame).get("prompt")
+    )
+    if prompt and _frame_image_url(frame) and not _frame_audio_chunks(frame):
+        return "ltx"
+    if not kind:
+        return "avatar"
+    return kind
+
+
+def _frame_duration_seconds(frame: dict[str, Any]) -> float:
+    ltx = _frame_ltx(frame)
+    for value in (
+        ltx.get("duration_seconds"),
+        ltx.get("durationSeconds"),
+        frame.get("duration_seconds"),
+        frame.get("durationSeconds"),
+        frame.get("duration_sec"),
+        frame.get("durationSec"),
+        frame.get("duration"),
+        frame.get("audio_duration_seconds"),
+        frame.get("audioDurationSeconds"),
+        frame.get("overlay_final_duration_seconds"),
+        frame.get("overlayFinalDurationSeconds"),
+        frame.get("overlay_min_duration_seconds"),
+        frame.get("overlayMinDurationSeconds"),
+    ):
+        duration = _safe_float(value, 0.0)
+        if duration > 0:
+            return float(duration)
+    return 0.0
+
+
+def _frame_prompt(frame: dict[str, Any], job: dict[str, Any]) -> str:
+    ltx = _frame_ltx(frame)
+    return _text(
+        ltx.get("prompt")
+        or frame.get("prompt")
+        or frame.get("video_prompt")
+        or frame.get("videoPrompt")
+        or _prompt(job)
+    )
+
+
+def _frame_negative_prompt(frame: dict[str, Any], job: dict[str, Any]) -> str:
+    ltx = _frame_ltx(frame)
+    return _text(
+        ltx.get("negative_prompt")
+        or ltx.get("negativePrompt")
+        or frame.get("negative_prompt")
+        or frame.get("negativePrompt")
+        or frame.get("video_negative_prompt")
+        or frame.get("videoNegativePrompt")
+        or _negative_prompt(job)
+    )
+
+
+def _frame_audio_chunks(frame: dict[str, Any]) -> list[dict[str, Any]]:
+    chunks = frame.get("audio_chunks")
+    if not isinstance(chunks, list):
+        chunks = frame.get("audioChunks")
+    if not isinstance(chunks, list):
+        chunks = frame.get("audios")
+    if not isinstance(chunks, list):
+        return []
+    return [dict(chunk) for chunk in chunks if isinstance(chunk, dict)]
+
+
+def _audio_chunk_url(chunk: dict[str, Any]) -> str:
+    return _text(
+        chunk.get("url")
+        or chunk.get("audio_url")
+        or chunk.get("audioUrl")
+        or chunk.get("audio_file_url")
+        or chunk.get("audioFileUrl")
+        or chunk.get("signed_url")
+        or chunk.get("signedUrl")
+    )
+
+
+def _alignment_duration_seconds(alignment: Any) -> float:
+    if not isinstance(alignment, dict):
+        return 0.0
+    ends = alignment.get("character_end_times_seconds") or alignment.get("characterEndTimesSeconds")
+    if isinstance(ends, (list, tuple)) and ends:
+        values = [_safe_float(value, 0.0) for value in ends]
+        return float(max(values) if values else 0.0)
+    words = alignment.get("words")
+    if isinstance(words, list) and words:
+        values = [
+            _safe_float((word or {}).get("end") if isinstance(word, dict) else None, 0.0)
+            for word in words
+        ]
+        return float(max(values) if values else 0.0)
+    return 0.0
+
+
+def _audio_chunk_duration_seconds(chunk: dict[str, Any]) -> float:
+    for value in (
+        chunk.get("duration_seconds"),
+        chunk.get("durationSeconds"),
+        chunk.get("duration_sec"),
+        chunk.get("durationSec"),
+        chunk.get("duration"),
+        chunk.get("audio_duration_seconds"),
+        chunk.get("audioDurationSeconds"),
+    ):
+        duration = _safe_float(value, 0.0)
+        if duration > 0:
+            return float(duration)
+    for key in ("normalized_alignment", "normalizedAlignment", "alignment"):
+        duration = _alignment_duration_seconds(chunk.get(key))
+        if duration > 0:
+            return float(duration)
+    return 0.0
+
+
+def _video_has_subtitles(job: dict[str, Any]) -> bool:
+    video = _claim_video(job)
+    raw = video.get("subtitles")
+    if raw is None:
+        return False
+    if isinstance(raw, str):
+        return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+    return bool(raw)
+
+
+def _watermark_text(job: dict[str, Any]) -> str:
+    video = _claim_video(job)
+    settings = job.get("settings") if isinstance(job.get("settings"), dict) else {}
+    return _text(
+        job.get("watermark_text")
+        or job.get("watermarkText")
+        or video.get("watermark_text")
+        or video.get("watermarkText")
+        or settings.get("watermark_text")
+        or settings.get("watermarkText")
+    )
+
+
+def _background_music_url(job: dict[str, Any]) -> str:
+    video = _claim_video(job)
+    music = video.get("background_music") or video.get("backgroundMusic")
+    if isinstance(music, dict):
+        return _text(
+            music.get("url")
+            or music.get("audio_url")
+            or music.get("audioUrl")
+            or music.get("signed_url")
+            or music.get("signedUrl")
+        )
+    return _text(music)
+
+
+def _postprocess_flag(job: dict[str, Any], name: str) -> bool:
+    postprocess = job.get("postprocess") if isinstance(job.get("postprocess"), dict) else {}
+    filters = job.get("filters") if isinstance(job.get("filters"), dict) else {}
+    raw = postprocess.get(name)
+    if raw is None:
+        raw = filters.get(name)
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(raw)
+
+
+def _subtitle_chunks_json_from_timeline(segments: list[dict[str, Any]]) -> str:
+    payload: list[dict[str, Any]] = []
+    offset = 0.0
+    next_index = 0
+    for segment in segments:
+        duration = max(0.0, _safe_float(segment.get("duration_sec"), 0.0))
+        chunks = segment.get("audio_chunks") if isinstance(segment.get("audio_chunks"), list) else []
+        cursor = 0.0
+        for chunk in [dict(item) for item in chunks if isinstance(item, dict)]:
+            text = _text(chunk.get("text") or chunk.get("subtitle_text") or chunk.get("subtitleText"))
+            chunk_duration = _audio_chunk_duration_seconds(chunk)
+            if chunk_duration <= 0 and len(chunks) == 1 and duration > 0:
+                chunk_duration = duration
+            if chunk_duration <= 0:
+                continue
+            start = offset + cursor
+            try:
+                index = int(chunk.get("index") if chunk.get("index") is not None else next_index)
+            except Exception:
+                index = next_index
+            next_index = max(next_index + 1, index + 1)
+            if text:
+                payload.append(
+                    {
+                        "index": int(index),
+                        "text": text,
+                        "start_sec": float(start),
+                        "end_sec": float(start + chunk_duration),
+                        "alignment_offset_sec": float(start),
+                        "alignment": dict(chunk.get("alignment")) if isinstance(chunk.get("alignment"), dict) else None,
+                        "normalized_alignment": (
+                            dict(chunk.get("normalized_alignment"))
+                            if isinstance(chunk.get("normalized_alignment"), dict)
+                            else dict(chunk.get("normalizedAlignment"))
+                            if isinstance(chunk.get("normalizedAlignment"), dict)
+                            else None
+                        ),
+                    }
+                )
+            cursor += float(chunk_duration)
+        offset += float(duration)
+    if not payload:
+        return ""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def _mux_audio(*, video_path: str, audio_path: str, out_path: str, duration_sec: float) -> None:
@@ -852,6 +1133,405 @@ class VlogMeRenderWorker:
         thread.start()
         return stop
 
+    def download_frame_audio(self, chunks: list[dict[str, Any]], *, run_dir: Path, frame_index: int) -> tuple[Path | None, float]:
+        audio_paths: list[Path] = []
+        for chunk_index, chunk in enumerate(chunks):
+            url = _audio_chunk_url(dict(chunk))
+            if not url:
+                continue
+            path = run_dir / f"frame_{frame_index:03d}_audio_{chunk_index:03d}"
+            _download(url, str(path))
+            audio_paths.append(path)
+        if not audio_paths:
+            return None, 0.0
+        if len(audio_paths) == 1:
+            duration = _media_duration_seconds(str(audio_paths[0]))
+            return audio_paths[0], float(duration)
+
+        out_path = run_dir / f"frame_{frame_index:03d}_audio.m4a"
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-y"]
+        for path in audio_paths:
+            cmd += ["-i", str(path)]
+        labels = "".join(f"[{idx}:a:0]" for idx in range(len(audio_paths)))
+        cmd += [
+            "-filter_complex",
+            f"{labels}concat=n={len(audio_paths)}:v=0:a=1[a]",
+            "-map",
+            "[a]",
+            "-c:a",
+            "aac",
+            "-ar",
+            "48000",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+        timeout = max(120.0, sum(max(0.5, _media_duration_seconds(str(path))) for path in audio_paths) * 30.0)
+        _run(cmd, timeout=timeout, label="concat frame audio")
+        return out_path, float(_media_duration_seconds(str(out_path)))
+
+    def conform_segment(
+        self,
+        *,
+        source_path: Path,
+        output_path: Path,
+        duration_sec: float,
+        width: int,
+        height: int,
+        fps: int,
+        audio_path: Path | None = None,
+        use_source_audio: bool = True,
+        label: str,
+    ) -> None:
+        duration = max(0.1, float(duration_sec))
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-y", "-i", str(source_path)]
+        audio_filter = ""
+        if audio_path is not None:
+            cmd += ["-i", str(audio_path)]
+            audio_filter = (
+                f"[1:a:0]aresample=48000,apad=whole_dur={duration:.6f},"
+                f"atrim=start=0:end={duration:.6f},asetpts=PTS-STARTPTS[a]"
+            )
+        elif bool(use_source_audio) and _has_audio_stream(str(source_path)):
+            audio_filter = (
+                f"[0:a:0]aresample=48000,apad=whole_dur={duration:.6f},"
+                f"atrim=start=0:end={duration:.6f},asetpts=PTS-STARTPTS[a]"
+            )
+        else:
+            cmd += [
+                "-f",
+                "lavfi",
+                "-t",
+                f"{duration:.6f}",
+                "-i",
+                "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]
+            audio_filter = f"[1:a:0]atrim=start=0:end={duration:.6f},asetpts=PTS-STARTPTS[a]"
+        video_filter = (
+            f"[0:v:0]setpts=PTS-STARTPTS,"
+            f"tpad=stop_mode=clone:stop_duration={duration:.6f},"
+            f"trim=start=0:duration={duration:.6f},"
+            f"fps={int(fps)},"
+            f"scale={int(width)}:{int(height)}:force_original_aspect_ratio=increase,"
+            f"crop={int(width)}:{int(height)},setsar=1,format=yuv420p[v]"
+        )
+        base_cmd = [
+            *cmd,
+            "-filter_complex",
+            f"{video_filter};{audio_filter}",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+        ]
+        _run_ffmpeg_encode(
+            base_cmd,
+            str(output_path),
+            timeout=max(180.0, duration * 45.0),
+            label=label,
+            crf=max(16, min(28, _env_int("VLOGME_RENDER_SEGMENT_CRF", 20))),
+        )
+
+    def extract_last_frame(self, *, source_path: Path, output_path: Path) -> None:
+        _run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "warning",
+                "-y",
+                "-sseof",
+                "-0.12",
+                "-i",
+                str(source_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                str(output_path),
+            ],
+            timeout=60.0,
+            label="extract last frame",
+        )
+
+    def render_ltx_frame(
+        self,
+        job: dict[str, Any],
+        frame: dict[str, Any],
+        *,
+        run_dir: Path,
+        frame_index: int,
+        previous_segment: Path | None,
+        width: int,
+        height: int,
+    ) -> tuple[Path, float, list[dict[str, Any]]]:
+        job_id = _job_id(job)
+        prompt = _frame_prompt(frame, job)
+        if not prompt:
+            raise VlogMeFatalJobError(f"frame_unsupported: ltx frame {frame_index} has no prompt")
+        duration = _frame_duration_seconds(frame)
+        if duration <= 0:
+            raise VlogMeFatalJobError(f"frame_missing_duration: ltx frame {frame_index} has no duration_seconds")
+        duration = min(float(self.max_duration_sec), max(0.5, float(duration)))
+
+        image_path = run_dir / f"frame_{frame_index:03d}_ltx_image.jpg"
+        use_previous = bool(frame.get("use_previous_last_frame") or frame.get("usePreviousLastFrame"))
+        if use_previous and previous_segment is not None:
+            self.extract_last_frame(source_path=previous_segment, output_path=image_path)
+        else:
+            image_url = _frame_image_url(frame)
+            if not image_url:
+                raise VlogMeFatalJobError(f"frame_unsupported: ltx frame {frame_index} has no image_url")
+            _download(image_url, str(image_path))
+
+        is_landscape = width > height
+        src_w = _env_int("VLOGME_RENDER_HUNYUAN_LANDSCAPE_WIDTH", 832) if is_landscape else _env_int("VLOGME_RENDER_HUNYUAN_PORTRAIT_WIDTH", 480)
+        src_h = _env_int("VLOGME_RENDER_HUNYUAN_LANDSCAPE_HEIGHT", 480) if is_landscape else _env_int("VLOGME_RENDER_HUNYUAN_PORTRAIT_HEIGHT", 832)
+        raw_frames = int(math.ceil(float(duration) * float(self.hunyuan_fps))) + 1
+        num_frames = max(9, _ceil_to_multiple_plus_one(raw_frames, multiple=_env_int("VLOGME_RENDER_HUNYUAN_FRAME_MULTIPLE", 8)))
+
+        hy_out_dir = run_dir / f"frame_{frame_index:03d}_hunyuan"
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "negative_prompt": _frame_negative_prompt(frame, job),
+            "width": int(src_w),
+            "height": int(src_h),
+            "num_frames": int(num_frames),
+            "frame_rate": int(self.hunyuan_fps),
+            "num_inference_steps": int(self.hunyuan_steps),
+            "output_path": str(hy_out_dir),
+            "task": "i2v",
+            "render_mode": "i2v",
+            "image_path": str(image_path),
+            "conditioning_media_paths": [str(image_path)],
+        }
+        ltx = _frame_ltx(frame)
+        if ltx.get("seed") is not None or frame.get("seed") is not None:
+            payload["seed"] = int(_safe_int(ltx.get("seed") if ltx.get("seed") is not None else frame.get("seed"), 0))
+
+        started = time.perf_counter()
+        resp = requests.post(f"{self.hunyuan_url}/generate", json=payload, timeout=(20, max(900, int(duration * 180))))
+        if int(resp.status_code) >= 400:
+            raise RuntimeError(f"Hunyuan frame {frame_index} failed HTTP {resp.status_code}: {resp.text[:2000]}")
+        body = resp.json()
+        outputs = body.get("output_paths") if isinstance(body.get("output_paths"), list) else []
+        out = Path(_text(body.get("output_path") or (outputs[0] if outputs else "")))
+        if not str(out) or not out.exists() or not out.is_file():
+            raise RuntimeError(f"Hunyuan frame {frame_index} output not found: {out}")
+        LOG.warning(
+            "VlogMe mixed timeline ltx frame done job=%s frame=%d duration=%.3fs frames=%d elapsed=%.3fs",
+            job_id,
+            frame_index,
+            duration,
+            num_frames,
+            time.perf_counter() - started,
+        )
+
+        audio_chunks: list[dict[str, Any]] = []
+        frame_audio = frame.get("audio") if isinstance(frame.get("audio"), dict) else {}
+        audio_url = _text(frame_audio.get("audio_url") or frame_audio.get("audioUrl") or frame_audio.get("url"))
+        audio_path: Path | None = None
+        if audio_url:
+            audio_path = run_dir / f"frame_{frame_index:03d}_ltx_audio"
+            _download(audio_url, str(audio_path))
+        elif _text(frame_audio.get("prompt")):
+            raise VlogMeFatalJobError(f"frame_unsupported: ltx frame {frame_index} audio prompt is not supported")
+
+        segment_path = run_dir / f"frame_{frame_index:03d}_ltx_segment.mp4"
+        self.conform_segment(
+            source_path=out,
+            output_path=segment_path,
+            duration_sec=duration,
+            width=width,
+            height=height,
+            fps=int(self.output_fps),
+            audio_path=audio_path,
+            use_source_audio=False,
+            label=f"conform ltx frame {frame_index}",
+        )
+        return segment_path, float(duration), audio_chunks
+
+    def render_ready_video_frame(
+        self,
+        job: dict[str, Any],
+        frame: dict[str, Any],
+        *,
+        run_dir: Path,
+        frame_index: int,
+        width: int,
+        height: int,
+    ) -> tuple[Path, float, list[dict[str, Any]]]:
+        source_url = _frame_source_video_url(frame)
+        if not source_url:
+            raise VlogMeFatalJobError(f"frame_unsupported: video frame {frame_index} has no source_video_url")
+        source_path = run_dir / f"frame_{frame_index:03d}_source_video"
+        _download(source_url, str(source_path))
+        source_summary = _probe_video_summary(str(source_path))
+        audio_chunks = _frame_audio_chunks(frame)
+        audio_path, audio_duration = self.download_frame_audio(audio_chunks, run_dir=run_dir, frame_index=frame_index)
+        duration = audio_duration if audio_duration > 0 else _frame_duration_seconds(frame)
+        if duration <= 0:
+            duration = _safe_float(source_summary.get("duration"), 0.0)
+        if duration <= 0:
+            raise VlogMeFatalJobError(f"frame_missing_duration: video frame {frame_index} has no usable duration")
+        duration = min(float(self.max_duration_sec), max(0.1, float(duration)))
+
+        segment_path = run_dir / f"frame_{frame_index:03d}_video_segment.mp4"
+        self.conform_segment(
+            source_path=source_path,
+            output_path=segment_path,
+            duration_sec=duration,
+            width=width,
+            height=height,
+            fps=int(self.output_fps),
+            audio_path=audio_path,
+            use_source_audio=audio_path is None,
+            label=f"conform video frame {frame_index}",
+        )
+        return segment_path, float(duration), audio_chunks
+
+    def concat_segments(self, *, segments: list[Path], output_path: Path, run_dir: Path) -> None:
+        if not segments:
+            raise RuntimeError("mixed timeline has no rendered segments")
+        if len(segments) == 1:
+            self.conform_segment(
+                source_path=segments[0],
+                output_path=output_path,
+                duration_sec=max(0.1, _probe_video_summary(str(segments[0])).get("duration") or 0.1),
+                width=_safe_int(_probe_video_summary(str(segments[0])).get("width"), 720),
+                height=_safe_int(_probe_video_summary(str(segments[0])).get("height"), 1280),
+                fps=int(self.output_fps),
+                audio_path=None,
+                use_source_audio=True,
+                label="single segment copy",
+            )
+            return
+        concat_file = run_dir / "mixed_timeline_concat.txt"
+        concat_file.write_text(
+            "".join(f"file '{_concat_demuxer_escape(path)}'\n" for path in segments),
+            encoding="utf-8",
+        )
+        _run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "warning",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_file),
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ],
+            timeout=max(180.0, sum(max(0.5, _probe_video_summary(str(path)).get("duration") or 0.5) for path in segments) * 20.0),
+            label="mixed timeline concat",
+        )
+
+    def handle_frame_timeline_job(self, job: dict[str, Any], *, run_dir: Path, started: float) -> None:
+        job_id = _job_id(job)
+        frames = _claim_frames(job)
+        if not frames:
+            raise VlogMeFatalJobError("frame_unsupported: render_video claim has empty frames")
+        out_w, out_h = _output_size(job)
+        segments: list[Path] = []
+        subtitle_segments: list[dict[str, Any]] = []
+        previous_segment: Path | None = None
+        total_frames = max(1, len(frames))
+
+        LOG.warning("VlogMe mixed timeline start job=%s frames=%d output=%sx%s", job_id, len(frames), out_w, out_h)
+        for frame_index, frame in enumerate(frames):
+            kind = _frame_kind(frame)
+            progress = 5 + int((float(frame_index) / float(total_frames)) * 65.0)
+            self.post_progress(job_id, progress, f"frame_{frame_index}_{kind}", lease_extend_minutes=30)
+            if kind == "video":
+                segment_path, duration, audio_chunks = self.render_ready_video_frame(
+                    job,
+                    frame,
+                    run_dir=run_dir,
+                    frame_index=frame_index,
+                    width=int(out_w),
+                    height=int(out_h),
+                )
+            elif kind == "ltx":
+                segment_path, duration, audio_chunks = self.render_ltx_frame(
+                    job,
+                    frame,
+                    run_dir=run_dir,
+                    frame_index=frame_index,
+                    previous_segment=previous_segment,
+                    width=int(out_w),
+                    height=int(out_h),
+                )
+            elif kind == "avatar":
+                raise VlogMeFatalJobError(
+                    "frame_unsupported: raw avatar frame landed on RTX media worker; route it to b200_render_video"
+                )
+            else:
+                raise VlogMeFatalJobError(f"frame_unsupported: unsupported frame kind {kind!r}")
+            segments.append(segment_path)
+            previous_segment = segment_path
+            subtitle_segments.append({"duration_sec": float(duration), "audio_chunks": audio_chunks})
+
+        self.post_progress(job_id, 75, "concat", lease_extend_minutes=20)
+        concat_path = run_dir / "mixed_timeline_concat.mp4"
+        self.concat_segments(segments=segments, output_path=concat_path, run_dir=run_dir)
+        concat_summary = _probe_video_summary(str(concat_path))
+
+        self.post_progress(job_id, 82, "finalize_start", lease_extend_minutes=20)
+        final_path = run_dir / "mixed_timeline_final.mp4"
+        subtitle_chunks_json = (
+            _subtitle_chunks_json_from_timeline(subtitle_segments) if _video_has_subtitles(job) else ""
+        )
+        skip_upscale = _postprocess_flag(job, "skip_upscale")
+        skip_interpolation = _postprocess_flag(job, "skip_interpolation")
+        self.run_finalizer(
+            source_path=str(concat_path),
+            output_path=str(final_path),
+            source_fps=int(self.output_fps),
+            target_fps=int(self.output_fps),
+            width=int(out_w),
+            height=int(out_h),
+            upscale_enabled=not bool(skip_upscale),
+            rife_enabled=not bool(skip_interpolation),
+            subtitle_chunks_json=subtitle_chunks_json,
+            watermark_text=_watermark_text(job),
+            background_music_url=_background_music_url(job),
+        )
+        final_summary = _probe_video_summary(str(final_path))
+        self.post_progress(job_id, 90, "upload", lease_extend_minutes=15)
+        storage_path = self.upload_via_vlogme_api(job=job, job_id=job_id, file_path=str(final_path))
+        self.post_complete(
+            job_id,
+            storage_path=str(storage_path),
+            duration_sec=float(final_summary.get("duration") or concat_summary.get("duration") or 0.0),
+            width=int(final_summary.get("width") or out_w),
+            height=int(final_summary.get("height") or out_h),
+            file_size_bytes=int(os.path.getsize(str(final_path))),
+        )
+        LOG.warning(
+            "VlogMe mixed timeline complete job=%s total=%.3fs frames=%d duration=%.3fs output=%sx%s bytes=%d subtitles=%d watermark=%d upscale=%d rife=%d",
+            job_id,
+            time.perf_counter() - started,
+            len(frames),
+            float(final_summary.get("duration") or 0.0),
+            int(final_summary.get("width") or 0),
+            int(final_summary.get("height") or 0),
+            int(os.path.getsize(str(final_path))),
+            1 if subtitle_chunks_json else 0,
+            1 if _watermark_text(job) else 0,
+            0 if skip_upscale else 1,
+            0 if skip_interpolation else 1,
+        )
+
     def handle_job(self, job: dict[str, Any]) -> None:
         job_id = _job_id(job)
         if not job_id:
@@ -873,6 +1553,10 @@ class VlogMeRenderWorker:
 
             if _job_type(job).lower() == "video_edit" or _provider(job).lower() == "vlogme_videoedit":
                 self.handle_video_edit_job(job, run_dir=run_dir, started=started)
+                return
+
+            if _claim_frames(job):
+                self.handle_frame_timeline_job(job, run_dir=run_dir, started=started)
                 return
 
             image_url = _select_image_url(job)
@@ -1027,6 +1711,9 @@ class VlogMeRenderWorker:
             )
         except VlogMeJobStopped as e:
             LOG.warning("VlogMe render stopped by API job=%s reason=%s", job_id, e)
+        except VlogMeFatalJobError as e:
+            LOG.exception("VlogMe render fatal job=%s", job_id)
+            self.post_fail(job_id, str(e), retryable=False)
         except Exception as e:
             LOG.exception("VlogMe render failed job=%s", job_id)
             self.post_fail(job_id, str(e), retryable=True)
@@ -1431,6 +2118,9 @@ class VlogMeRenderWorker:
         rife_enabled: bool | None = None,
         quality: str | None = None,
         scale: str | None = None,
+        subtitle_chunks_json: str = "",
+        watermark_text: str = "",
+        background_music_url: str = "",
     ) -> None:
         upscale = _env_flag("VLOGME_RENDER_FINALIZER_UPSCALE", "1") if upscale_enabled is None else bool(upscale_enabled)
         rife = _env_flag("VLOGME_RENDER_FINALIZER_RIFE", "1") if rife_enabled is None else bool(rife_enabled)
@@ -1449,7 +2139,13 @@ class VlogMeRenderWorker:
         if self.finalizer_secret:
             headers["Authorization"] = f"Bearer {self.finalizer_secret}"
         with open(source_path, "rb") as f:
-            files = {"file": (os.path.basename(source_path), f, "video/mp4")}
+            files: dict[str, Any] = {"file": (os.path.basename(source_path), f, "video/mp4")}
+            if _text(subtitle_chunks_json):
+                files["subtitle_chunks_json"] = (None, _text(subtitle_chunks_json))
+            if _text(watermark_text):
+                files["watermark_text"] = (None, _text(watermark_text))
+            if _text(background_music_url):
+                files["background_music_url"] = (None, _text(background_music_url))
             resp = requests.post(self.finalizer_url, params=params, headers=headers, files=files, timeout=(20, 3600))
         if int(resp.status_code) < 200 or int(resp.status_code) >= 300:
             raise RuntimeError(f"finalizer failed HTTP {resp.status_code}: {resp.text[:2000]}")
