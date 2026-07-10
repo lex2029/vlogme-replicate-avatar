@@ -1,0 +1,121 @@
+name: Build RTX6000 Media Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker image tag. Empty = short commit SHA."
+        required: false
+        type: string
+      base_image:
+        description: "NVIDIA/PyTorch base image."
+        required: false
+        type: string
+        default: "nvcr.io/nvidia/pytorch:26.02-py3"
+      push_latest:
+        description: "Also push :latest."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/lex2029/smartblog-rtx6000-media
+  BUILD_CONTEXT: runtime/SmartBlog-Live
+  NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+
+jobs:
+  build:
+    name: Build and push RTX6000 media image
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tag
+        id: meta
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSH_LATEST: ${{ inputs.push_latest }}
+        run: |
+          set -euo pipefail
+          tag="$INPUT_TAG"
+          if [[ -z "$tag" ]]; then
+            tag="$(git rev-parse --short=12 HEAD)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE_NAME}:${tag}"
+            if [[ "$PUSH_LATEST" == "true" ]]; then
+              echo "${IMAGE_NAME}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to NVIDIA NGC
+        if: ${{ env.NGC_API_KEY != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: "$oauthtoken"
+          password: ${{ env.NGC_API_KEY }}
+
+      - name: Free runner disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache \
+            /usr/local/share/boost \
+            /usr/local/share/chromium \
+            /opt/microsoft || true
+          docker system prune -af || true
+          df -h
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        shell: bash
+        env:
+          BASE_IMAGE: ${{ inputs.base_image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          BUILDER_NAME: ${{ steps.buildx.outputs.name }}
+        run: |
+          set -euo pipefail
+          df -h
+          tag_args=()
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            tag_args+=(--tag "$tag")
+          done <<< "$TAGS"
+          docker buildx build \
+            --builder "$BUILDER_NAME" \
+            --progress=plain \
+            --push \
+            --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "smartblog.role=rtx6000-media" \
+            "${tag_args[@]}" \
+            -f "$BUILD_CONTEXT/Dockerfile.rtx6000-media" \
+            "$BUILD_CONTEXT"

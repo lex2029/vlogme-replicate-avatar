@@ -10,9 +10,17 @@ mkdir -p "$DST/scripts/lib" "$DST/config" "$DST/assets"
 
 rsync -a "$SRC/avalife" "$DST/"
 rsync -a "$SRC/liveavatar" "$DST/"
-rsync -a "$SRC/requirements-b200-avatar.txt" "$SRC/LICENSE" "$SRC/README.md" "$DST/"
+rsync -a \
+  "$SRC/.dockerignore" \
+  "$SRC/Dockerfile.rtx6000-media" \
+  "$SRC/LICENSE" \
+  "$SRC/README.md" \
+  "$SRC/requirements-b200-avatar.txt" \
+  "$SRC/requirements-rtx6000-media.txt" \
+  "$DST/"
 rsync -a "$SRC/assets/ref_user_photo.jpg" "$DST/assets/"
 rsync -a \
+  "$SRC/config/upscale_service.conf" \
   "$SRC/config/worker_locked.conf" \
   "$SRC/config/worker_runtime.conf" \
   "$SRC/config/worker_profile.render_allinone.conf" \
@@ -21,9 +29,21 @@ rsync -a \
   "$DST/config/"
 rsync -a "$SRC/scripts/lib/runtime_env.sh" "$DST/scripts/lib/"
 rsync -a \
+  "$SRC/scripts/hunyuan_service.sh" \
+  "$SRC/scripts/install_musetalk_service.sh" \
+  "$SRC/scripts/media_services.sh" \
+  "$SRC/scripts/media_worker_registry.py" \
+  "$SRC/scripts/mmaudio_service.sh" \
   "$SRC/scripts/modeld.sh" \
+  "$SRC/scripts/musetalk_service.sh" \
+  "$SRC/scripts/patch_musetalk_no_mmpose.py" \
   "$SRC/scripts/profile.sh" \
   "$SRC/scripts/preseed_b200_avatar_assets.sh" \
+  "$SRC/scripts/preseed_rtx_media_assets.sh" \
+  "$SRC/scripts/rtx6000_media_healthcheck.sh" \
+  "$SRC/scripts/runpod_rtx6000_media_start.sh" \
+  "$SRC/scripts/upscale_service.sh" \
+  "$SRC/scripts/vlogme_render_worker.sh" \
   "$SRC/scripts/download_worker_weights.sh" \
   "$SRC/scripts/verify_worker_weights_hf.py" \
   "$DST/scripts/"

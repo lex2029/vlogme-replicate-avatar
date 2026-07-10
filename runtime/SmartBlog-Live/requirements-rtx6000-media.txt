@@ -1,0 +1,28 @@
+# Runtime dependencies for the RTX PRO 6000 media container.
+#
+# Torch/torchvision/torchaudio/CUDA are provided by the NVIDIA PyTorch base
+# image. Do not install LiveAvatar/modeld/worker-only dependencies here.
+
+accelerate==1.13.0
+aiohttp==3.13.3
+angelslim==0.2.2
+av==17.1.0
+diffusers==0.37.1
+einops==0.8.1
+hf_transfer==0.1.9
+huggingface_hub[cli]==0.36.2
+imageio==2.37.3
+imageio-ffmpeg==0.6.0
+loguru==0.7.3
+modelscope==1.35.3
+nvidia-vfx==0.1.0.1
+numpy==1.26.4
+opencv-python==4.11.0.86
+peft==0.17.0
+Pillow==12.0.0
+qwen-vl-utils==0.0.8
+requests==2.32.5
+safetensors==0.8.0
+scipy==1.16.3
+tokenizers==0.22.1
+transformers==4.57.1
