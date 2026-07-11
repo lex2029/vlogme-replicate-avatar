@@ -305,7 +305,7 @@ class Predictor(BasePredictor):
                         video_url = str(status_doc.get("video_url") or "").strip()
                         if not video_url:
                             raise RuntimeError(f"VlogMe completed without video_url: {status_doc!r}")
-                        out_path = SysPath("/tmp/vlogme-avatar-bridge/avatar.mp4")
+                        out_path = SysPath("/tmp/vlogme-avatar-bridge/vlogme_ai.mp4")
                         _log("downloading completed VlogMe output")
                         return Path(str(_download_file(video_url, out_path)))
 

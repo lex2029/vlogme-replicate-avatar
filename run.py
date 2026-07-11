@@ -94,7 +94,7 @@ def _make_debug_archive(*, run_root: SysPath, final_path: SysPath) -> SysPath | 
         return None
     archive_path = run_root / "avatar-debug.zip"
     with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.write(final_path, "avatar.mp4")
+        archive.write(final_path, "vlogme_ai.mp4")
         for path in crop_paths:
             archive.write(path, f"face_crops/{path.name}")
     _log(f"debug face crops archived: files={len(crop_paths)} path={archive_path}")
@@ -870,7 +870,7 @@ class Predictor(BasePredictor):
             default="",
         ),
         debug_face_crops: int = Input(
-            description="Debug only: -1 default, 1 returns a zip with avatar.mp4 plus GFPGAN face crop diagnostics.",
+            description="Debug only: -1 default, 1 returns a zip with vlogme_ai.mp4 plus GFPGAN face crop diagnostics.",
             default=-1,
         ),
         face_restore: float = Input(
@@ -1068,7 +1068,7 @@ class Predictor(BasePredictor):
             output_fps = int(fps * 2) if stream_file_interpolation in {"rife", "torch-rife"} else int(fps)
         size = str(os.environ.get("SIZE", "704*384") or "704*384")
         num_clip = max(1, int(auto_num_clip_for_audio(str(audio_path), fps=int(fps), infer_frames=int(infer_frames))))
-        final_path = run_root / "avatar.mp4"
+        final_path = run_root / "vlogme_ai.mp4"
         req = InferRequest(
             prompt=str(prompt or ""),
             image_path=str(avatar_path),
