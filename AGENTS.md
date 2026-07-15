@@ -66,6 +66,19 @@ The workflow `.github/workflows/test-replicate-bridge-prediction.yml` is the
 preferred hosted test path because it uses GitHub Actions secrets. It should run
 until the Replicate prediction completes and returns an MP4.
 
+## Creating VlogMe Bridge Jobs
+
+Read `docs/VLOGME_BRIDGE_JOB_CREATION.md` before changing or recreating the
+Replicate-to-VlogMe request. The critical routing field is the top-level JSON
+boolean `"replicate_free": true`. Do not omit it, send it as a string, nest it,
+or replace it with a caller-supplied `source` field. Without the exact boolean,
+VlogMe creates a normal `api_v1` render that can wait on the standard private
+render fleet instead of being identified as the public Replicate channel.
+
+Every `POST /api/public/v1/videos` must also include one stable
+`Idempotency-Key` for that logical generation. Reuse the same key only when
+retrying the same generation; use a new key for a genuinely new generation.
+
 ## Cooldown Behavior
 
 The bridge intentionally allows one generation per worker container, then blocks
