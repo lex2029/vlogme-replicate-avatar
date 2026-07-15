@@ -43,7 +43,17 @@ the local Codex GitHub token file above. Only print HTTP status, workflow run id
 and public workflow URLs.
 
 After publishing, wait for the workflow run to complete successfully before
-testing the Replicate model.
+updating the Replicate deployment. Publishing creates a new model version but
+does not automatically move the deployment to that version.
+
+Then run `.github/workflows/update-replicate-deployment.yml` with:
+
+- `model_name`: `lex2029/vlogme-avatar-bridge`
+- `deployment`: `lex2029/vlogme-avatar-bridge-cpu`
+- `version`: empty, so the workflow selects the latest model version
+
+Wait for the deployment update to complete successfully before testing. If this
+step is skipped, the test can still run the previous worker version.
 
 ## Test After Publish
 
