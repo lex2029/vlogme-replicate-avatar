@@ -9,6 +9,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path as SysPath
 from typing import Any
 
@@ -81,6 +82,7 @@ def _json_request(
     *,
     token: str,
     body: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
     timeout: int = 120,
 ) -> dict[str, Any]:
     headers = {
@@ -88,6 +90,8 @@ def _json_request(
         "Authorization": f"Bearer {token}",
         "User-Agent": "vlogme-replicate-avatar-bridge/1.0",
     }
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     data = None
     if body is not None:
         data = json.dumps(body).encode("utf-8")
@@ -273,7 +277,13 @@ class Predictor(BasePredictor):
             "replicate_free": True,
         }
 
-        created = _json_request("POST", f"{api_root}/videos", token=token, body=create_body)
+        created = _json_request(
+            "POST",
+            f"{api_root}/videos",
+            token=token,
+            body=create_body,
+            idempotency_key=str(uuid.uuid4()),
+        )
         video_id = str(created.get("id") or "").strip()
         if not video_id:
             raise RuntimeError(f"VlogMe create response is missing id: {created!r}")
